@@ -8,11 +8,15 @@ require('dotenv').config();
 
 const authRoutes = require('./routes/auth');
 const ticketRoutes = require('./routes/tickets');
+const notificationRoutes = require('./routes/notifications');
+const dashboardRoutes = require('./routes/dashboard');
+const reportRoutes = require('./routes/reports');
 const { handleChatMessageSocket } = require('./chatbot/openaiChat');
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
+app.set('io', io);
 
 app.use(helmet());
 app.use(cors());
@@ -21,6 +25,9 @@ app.use(express.json());
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/tickets', ticketRoutes);
+app.use('/api/notifications', notificationRoutes);
+app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/reports', reportRoutes);
 
 // Simple health
 app.get('/api/health', (req, res) => res.json({ ok: true }));
@@ -31,6 +38,10 @@ io.on('connection', (socket) => {
 
   socket.on('join', ({ room }) => {
     socket.join(room);
+  });
+
+  socket.on('register_user', ({ userId }) => {
+    if (userId) socket.join(String(userId));
   });
 
   socket.on('chat_message', async (payload) => {
