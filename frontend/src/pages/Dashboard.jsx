@@ -389,6 +389,17 @@ export default function Dashboard({ user, onLogout }) {
     }
   }, []);
 
+  const markAllNotificationsRead = useCallback(async () => {
+    try {
+      const res = await api.patch('/notifications/read-all');
+      if (res.data.ok) {
+        setNotifications((prev) => prev.map((item) => ({ ...item, read: true })));
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  }, []);
+
   const agentClientOptions = useMemo(() => {
     if (user.role !== 'agent') return [];
     const store = new Map();
@@ -542,7 +553,12 @@ export default function Dashboard({ user, onLogout }) {
           <div className="subtitle">Rol: {user.role}. Gestiona tus operaciones de soporte.</div>
         </div>
         <div className="dashboard-actions">
-          <NotificationBell notifications={notifications} onMarkRead={markNotificationRead} onRefresh={refreshNotifications} />
+          <NotificationBell
+            notifications={notifications}
+            onMarkRead={markNotificationRead}
+            onMarkAllRead={markAllNotificationsRead}
+            onRefresh={refreshNotifications}
+          />
           {['admin', 'agent'].includes(user.role) && (
             <>
               <button
@@ -778,34 +794,45 @@ export default function Dashboard({ user, onLogout }) {
       )}
         </section>
 
-        <section id="section-tickets" className="dashboard-main">
-        <div className="tickets-column">
-          {user.role === 'client' && <TicketComposer onCreate={createTicket} loading={loadingAction} />}
+      <section id="section-tickets" className="tickets-layout">
+        <div className={`tickets-upper ${user.role === 'client' ? 'with-controls' : 'without-controls'}`}>
+          {user.role === 'client' && (
+            <div className="tickets-controls">
+              <TicketComposer onCreate={createTicket} loading={loadingAction} />
+            </div>
+          )}
+
+          <div className="details-column">
+            {selectedTicket ? (
+              <TicketDetail
+                ticket={selectedTicket}
+                currentUser={user}
+                onSendMessage={sendMessage}
+                onChangeStatus={changeStatus}
+                onAssign={assignTicket}
+                onMarkProgrammerReady={markProgrammerReady}
+                onSubmitSatisfaction={submitSatisfaction}
+                onDeleteTicket={handleDeleteTicket}
+                usersByRole={usersByRole}
+                loading={loadingAction}
+              />
+            ) : (
+              <div className="ticket-detail" style={{ justifyContent: 'center', alignItems: 'center' }}>
+                <p>Selecciona un ticket para ver sus detalles.</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="tickets-table-block">
           <TicketFilters filters={filters} onChange={handleFiltersChange} />
           <TicketTable tickets={tickets} onSelect={setSelectedTicket} selectedId={selectedTicket?._id} />
         </div>
+      </section>
 
-        <div className="details-column">
-          {selectedTicket ? (
-            <TicketDetail
-              ticket={selectedTicket}
-              currentUser={user}
-              onSendMessage={sendMessage}
-              onChangeStatus={changeStatus}
-              onAssign={assignTicket}
-              onMarkProgrammerReady={markProgrammerReady}
-              onSubmitSatisfaction={submitSatisfaction}
-              usersByRole={usersByRole}
-              loading={loadingAction}
-            />
-          ) : (
-            <div className="ticket-detail" style={{ justifyContent: 'center', alignItems: 'center' }}>
-              <p>Selecciona un ticket para ver sus detalles.</p>
-            </div>
-          )}
-          <div id="section-chatbot" className="chatbot-wrapper">
-            <Chatbot userId={user.id || user._id || 'anon-room'} />
-          </div>
+      <section id="section-chatbot" className="chatbot-panel-section">
+        <div className="chatbot-wrapper">
+          <Chatbot userId={user.id || user._id || 'anon-room'} />
         </div>
       </section>
       </div>

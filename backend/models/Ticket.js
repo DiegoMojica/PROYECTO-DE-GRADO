@@ -36,6 +36,7 @@ const TicketSchema = new mongoose.Schema({
   status: { type: String, enum: ['open', 'in_progress', 'awaiting_client', 'resolved', 'closed'], default: 'open' },
   statusHistory: [StatusHistorySchema],
   messages: [MessageSchema],
+  survey: { type: mongoose.Schema.Types.ObjectId, ref: 'Survey', default: null },
   satisfactionRating: { type: Number, min: 1, max: 5 },
   satisfactionComment: { type: String, trim: true },
   lastActivityAt: { type: Date, default: Date.now },

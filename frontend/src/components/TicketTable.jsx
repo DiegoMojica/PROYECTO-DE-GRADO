@@ -16,6 +16,34 @@ const PRIORITY_COLORS = {
 };
 
 export default function TicketTable({ tickets, onSelect, selectedId }) {
+  const [copiedTicketId, setCopiedTicketId] = React.useState('');
+
+  const copyTicketNumber = async (event, ticketId) => {
+    event.stopPropagation();
+    const value = String(ticketId || '');
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(value);
+      } else {
+        const textarea = document.createElement('textarea');
+        textarea.value = value;
+        textarea.setAttribute('readonly', 'true');
+        textarea.style.position = 'fixed';
+        textarea.style.left = '-9999px';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      }
+      setCopiedTicketId(value);
+      window.setTimeout(() => {
+        setCopiedTicketId((current) => (current === value ? '' : current));
+      }, 1400);
+    } catch (error) {
+      console.error('No se pudo copiar el numero de ticket', error);
+    }
+  };
+
   return (
     <div className="ticket-table">
       <header>
@@ -24,9 +52,20 @@ export default function TicketTable({ tickets, onSelect, selectedId }) {
       </header>
       <div className="table-scroll">
         <table>
+          <colgroup>
+            <col style={{ width: '260px' }} />
+            <col style={{ width: '260px' }} />
+            <col style={{ width: '140px' }} />
+            <col style={{ width: '170px' }} />
+            <col style={{ width: '130px' }} />
+            <col style={{ width: '130px' }} />
+            <col style={{ width: '140px' }} />
+            <col style={{ width: '210px' }} />
+            <col style={{ width: '170px' }} />
+          </colgroup>
           <thead>
             <tr>
-              <th>ID</th>
+              <th>Numero ticket</th>
               <th>Titulo</th>
               <th>Empresa</th>
               <th>Cliente</th>
@@ -44,22 +83,31 @@ export default function TicketTable({ tickets, onSelect, selectedId }) {
                 onClick={() => onSelect(ticket)}
                 className={selectedId === ticket._id ? 'selected' : ''}
               >
-                <td>{ticket._id.slice(-6)}</td>
-                <td>{ticket.title}</td>
-                <td>{ticket.company || 'N/D'}</td>
-                <td>{ticket.createdBy?.name || ticket.createdBy?.email || 'N/D'}</td>
-                <td>
+                <td className="ticket-col-id">
+                  <div className="ticket-id-cell">
+                    <span className="ticket-id-value" title={ticket._id}>
+                      {ticket._id}
+                    </span>
+                    <button type="button" className="ticket-id-copy" onClick={(event) => copyTicketNumber(event, ticket._id)}>
+                      {copiedTicketId === ticket._id ? 'Copiado' : 'Copiar'}
+                    </button>
+                  </div>
+                </td>
+                <td className="ticket-col-title">{ticket.title}</td>
+                <td className="ticket-col-company">{ticket.company || 'N/D'}</td>
+                <td className="ticket-col-client">{ticket.createdBy?.name || ticket.createdBy?.email || 'N/D'}</td>
+                <td className="ticket-col-priority">
                   <span className={PRIORITY_COLORS[ticket.priority] || 'tag'}>{ticket.priority}</span>
                 </td>
-                <td>{STATUS_LABELS[ticket.status] || ticket.status}</td>
-                <td>
+                <td className="ticket-col-status">{STATUS_LABELS[ticket.status] || ticket.status}</td>
+                <td className="ticket-col-satisfaction">
                   {ticket.satisfactionRating ? (
                     <span className="tag tag-success">{ticket.satisfactionRating}/5</span>
                   ) : (
                     <span className="tag">Pendiente</span>
                   )}
                 </td>
-                <td>
+                <td className="ticket-col-assigned">
                   {ticket.assignedAgent?.name && (
                     <div className="avatar-stack">
                       <span className="tag tag-agent">{ticket.assignedAgent.name}</span>
@@ -72,7 +120,7 @@ export default function TicketTable({ tickets, onSelect, selectedId }) {
                   )}
                   {!ticket.assignedAgent && !ticket.assignedProgrammer && 'Sin asignar'}
                 </td>
-                <td>{new Date(ticket.updatedAt).toLocaleString()}</td>
+                <td className="ticket-col-updated">{new Date(ticket.updatedAt).toLocaleString()}</td>
               </tr>
             ))}
             {!tickets.length && (

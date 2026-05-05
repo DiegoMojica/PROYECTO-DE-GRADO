@@ -3,6 +3,7 @@ require('dotenv').config();
 const mongoose = require('mongoose');
 const User = require('../models/User');
 const Ticket = require('../models/Ticket');
+const Survey = require('../models/Survey');
 
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/support';
 
@@ -52,6 +53,7 @@ async function run() {
   });
 
   console.log('Limpiando tickets previos...');
+  await Survey.deleteMany({});
   await Ticket.deleteMany({});
 
   const clients = [
@@ -183,11 +185,41 @@ async function run() {
     }
   });
 
-  await Ticket.insertMany(ticketsToInsert);
+  const insertedTickets = await Ticket.insertMany(ticketsToInsert);
   console.log(`Se generaron ${ticketsToInsert.length} tickets de muestra.`);
 
-  await mongoose.disconnect();
-  console.log('Seed finalizado.');
+  const surveyDocs = insertedTickets
+    .filter((ticket) => Number.isFinite(ticket.satisfactionRating))
+    .map((ticket) => {
+      const base = Math.max(1, Math.min(5, Math.round(ticket.satisfactionRating)));
+      return {
+        ticket: ticket._id,
+        user: ticket.createdBy,
+        responses: { q1: base, q2: base, q3: base, q4: base, q5: base },
+        comment: ticket.satisfactionComment || '',
+        averageRating: Number(base.toFixed(2)),
+        createdAt: ticket.closedAt || ticket.updatedAt || new Date(),
+        updatedAt: ticket.closedAt || ticket.updatedAt || new Date()
+      };
+    });
+
+  if (surveyDocs.length) {
+    const insertedSurveys = await Survey.insertMany(surveyDocs);
+    const surveyByTicket = new Map(insertedSurveys.map((survey) => [String(survey.ticket), survey._id]));
+    const updates = insertedTickets
+      .filter((ticket) => surveyByTicket.has(String(ticket._id)))
+      .map((ticket) => ({
+        updateOne: {
+          filter: { _id: ticket._id },
+          update: { $set: { survey: surveyByTicket.get(String(ticket._id)) } }
+        }
+      }));
+
+    if (updates.length) {
+      await Ticket.bulkWrite(updates);
+    }
+    console.log(`Se generaron ${insertedSurveys.length} encuestas de muestra.`);
+  }
 
   await mongoose.disconnect();
   console.log('Seed finalizado.');

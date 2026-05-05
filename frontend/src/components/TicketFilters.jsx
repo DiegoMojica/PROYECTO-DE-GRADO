@@ -37,8 +37,22 @@ export default function TicketFilters({ filters, onChange }) {
 
   return (
     <form className="ticket-filters" onSubmit={submit}>
+      <div className="ticket-filters-header">
+        <h3>Buscar Tickets</h3>
+        <span>Aplica filtros para encontrar casos rapido</span>
+      </div>
+
       <div className="filter-grid">
-        <label>
+        <label className="filter-control filter-control-search">
+          <span>Buscar</span>
+          <input
+            value={localFilters.search}
+            onChange={(e) => setLocalFilters((prev) => ({ ...prev, search: e.target.value }))}
+            placeholder="Titulo, empresa, cliente o descripcion"
+          />
+        </label>
+
+        <label className="filter-control filter-control-status">
           <span>Estado</span>
           <select
             value={localFilters.status}
@@ -52,7 +66,7 @@ export default function TicketFilters({ filters, onChange }) {
           </select>
         </label>
 
-        <label>
+        <label className="filter-control filter-control-priority">
           <span>Prioridad</span>
           <select
             value={localFilters.priority}
@@ -64,15 +78,6 @@ export default function TicketFilters({ filters, onChange }) {
               </option>
             ))}
           </select>
-        </label>
-
-        <label>
-          <span>Buscar</span>
-          <input
-            value={localFilters.search}
-            onChange={(e) => setLocalFilters((prev) => ({ ...prev, search: e.target.value }))}
-            placeholder="Titulo o descripcion"
-          />
         </label>
       </div>
 

@@ -18,6 +18,22 @@ router.get('/', async (req, res) => {
   }
 });
 
+router.patch('/read-all', async (req, res) => {
+  try {
+    const result = await Notification.updateMany(
+      { user: req.user.id, read: false },
+      { $set: { read: true } }
+    );
+    res.json({
+      ok: true,
+      updated: result?.modifiedCount || 0
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(400).json({ ok: false, error: 'No se pudieron marcar las notificaciones' });
+  }
+});
+
 router.patch('/:id/read', async (req, res) => {
   try {
     const notification = await Notification.findOneAndUpdate(

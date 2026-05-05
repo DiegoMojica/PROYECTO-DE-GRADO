@@ -11,6 +11,7 @@ const ticketRoutes = require('./routes/tickets');
 const notificationRoutes = require('./routes/notifications');
 const dashboardRoutes = require('./routes/dashboard');
 const reportRoutes = require('./routes/reports');
+const chatbotRoutes = require('./routes/chatbot');
 const { handleChatMessageSocket } = require('./chatbot/openaiChat');
 
 const app = express();
@@ -28,6 +29,7 @@ app.use('/api/tickets', ticketRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/reports', reportRoutes);
+app.use('/api/chatbot', chatbotRoutes);
 
 // Simple health
 app.get('/api/health', (req, res) => res.json({ ok: true }));
@@ -47,14 +49,14 @@ io.on('connection', (socket) => {
   socket.on('chat_message', async (payload) => {
     // payload: { userId, text, room }
     try {
-      const result = await handleChatMessageSocket(payload, io);
-      // result already emitted inside handler (if needed). As fallback, emit reply:
-      if (result && payload.room) {
-        io.to(payload.room).emit('chat_reply', { reply: result });
-      }
+      await handleChatMessageSocket(payload, io);
     } catch (err) {
       console.error('chat_message error', err);
-      io.to(payload.room || socket.id).emit('chat_reply', { reply: 'Error en el servicio de chatbot.' });
+      const room = payload?.room || socket.id;
+      io.to(room).emit('chat_reply', {
+        reply: 'Error en el servicio de chatbot.',
+        clientMessageId: payload?.clientMessageId || null
+      });
     }
   });
 

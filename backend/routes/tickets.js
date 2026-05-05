@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const Ticket = require('../models/Ticket');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
+const Survey = require('../models/Survey');
 const auth = require('../middleware/auth');
 
 const router = express.Router();
@@ -13,7 +14,8 @@ const BASE_POPULATE = [
   { path: 'assignedProgrammer', select: 'name email role' },
   { path: 'messages.authorId', select: 'name role' },
   { path: 'watchers', select: 'name role' },
-  { path: 'statusHistory.changedBy', select: 'name role' }
+  { path: 'statusHistory.changedBy', select: 'name role' },
+  { path: 'survey', select: 'responses comment averageRating createdAt' }
 ];
 
 function ensureRole(roles = []) {
@@ -26,6 +28,12 @@ function ensureRole(roles = []) {
 function toId(value) {
   if (!value) return null;
   if (value._id) return String(value._id);
+  return String(value);
+}
+
+function normalizeAssigneeId(value) {
+  if (value === null || value === undefined || value === '') return null;
+  if (!mongoose.Types.ObjectId.isValid(value)) return undefined;
   return String(value);
 }
 
@@ -110,7 +118,9 @@ function buildFilterByRole(user) {
         $or: [{ assignedProgrammer: user.id }, { watchers: user.id }]
       };
     case 'agent':
-      return {};
+      return {
+        $or: [{ assignedAgent: user.id }, { assignedAgent: null }, { watchers: user.id }]
+      };
     case 'admin':
       return {};
     default:
@@ -289,38 +299,86 @@ router.post('/:id/messages', async (req, res) => {
   }
 });
 
-router.patch('/:id/assign', ensureRole(['agent']), async (req, res) => {
+router.patch('/:id/assign', ensureRole(['agent', 'admin']), async (req, res) => {
   try {
-    const { programmerId } = req.body;
+    const { agentId, programmerId } = req.body;
     const ticket = await Ticket.findById(req.params.id);
     if (!ticket) return res.status(404).json({ ok: false, error: 'Ticket no encontrado' });
 
-    if (!ticket.assignedAgent) {
-      ticket.assignedAgent = req.user.id;
-    } else if (String(ticket.assignedAgent) !== String(req.user.id)) {
-      return res.status(403).json({ ok: false, error: 'Ticket asignado a otro asesor' });
+    const nextAgentId = normalizeAssigneeId(agentId);
+    const nextProgrammerId = normalizeAssigneeId(programmerId);
+    if (nextAgentId === undefined) {
+      return res.status(400).json({ ok: false, error: 'agentId invalido' });
+    }
+    if (nextProgrammerId === undefined) {
+      return res.status(400).json({ ok: false, error: 'programmerId invalido' });
+    }
+
+    if (req.user.role === 'agent') {
+      if (!ticket.assignedAgent) {
+        ticket.assignedAgent = req.user.id;
+      } else if (String(ticket.assignedAgent) !== String(req.user.id)) {
+        return res.status(403).json({ ok: false, error: 'Ticket asignado a otro asesor' });
+      }
+      if (nextAgentId && nextAgentId !== String(req.user.id)) {
+        return res.status(403).json({ ok: false, error: 'Solo un administrador puede reasignar asesor' });
+      }
+    } else if (req.user.role === 'admin') {
+      if (nextAgentId) {
+        const foundAgent = await User.findOne({ _id: nextAgentId, role: 'agent' }).lean();
+        if (!foundAgent) {
+          return res.status(400).json({ ok: false, error: 'El asesor seleccionado no existe o no tiene rol agent' });
+        }
+        ticket.assignedAgent = nextAgentId;
+      } else if (agentId === null || agentId === '') {
+        ticket.assignedAgent = null;
+      }
     }
 
     ensureWatcher(ticket, req.user.id);
 
-    if (programmerId) {
-      if (ticket.assignedProgrammer && String(ticket.assignedProgrammer) !== String(programmerId)) {
-        return res.status(400).json({ ok: false, error: 'El ticket ya tiene un programador asignado' });
+    if (nextProgrammerId) {
+      const foundProgrammer = await User.findOne({ _id: nextProgrammerId, role: 'programmer' }).lean();
+      if (!foundProgrammer) {
+        return res.status(400).json({ ok: false, error: 'El programador seleccionado no existe o no tiene rol programmer' });
       }
-      ticket.assignedProgrammer = programmerId;
-      ensureWatcher(ticket, programmerId);
+      ticket.assignedProgrammer = nextProgrammerId;
+      ensureWatcher(ticket, nextProgrammerId);
+    } else if (programmerId === null || programmerId === '') {
+      ticket.assignedProgrammer = null;
+      ticket.programmerReady = false;
+      ticket.programmerReadyAt = null;
+      ticket.programmerReadyBy = null;
     }
+
+    if (ticket.assignedAgent) ensureWatcher(ticket, ticket.assignedAgent);
+    if (ticket.assignedProgrammer) ensureWatcher(ticket, ticket.assignedProgrammer);
+    if (ticket.status === 'open' && ticket.assignedAgent) {
+      ticket.status = 'in_progress';
+    }
+
+    const noteParts = [];
+    if (ticket.assignedAgent) {
+      noteParts.push('Asesor asignado/actualizado');
+    }
+    if (programmerId !== undefined) {
+      noteParts.push(ticket.assignedProgrammer ? 'Programador asignado/actualizado' : 'Programador desasignado');
+    }
+    if (!noteParts.length) {
+      noteParts.push('Asignacion actualizada');
+    }
+
     ticket.statusHistory.push({
       status: ticket.status,
       changedBy: req.user.id,
-      note: 'Ticket asignado/actualizado'
+      note: noteParts.join('. ')
     });
 
     await ticket.save();
     const populated = await ticket.populate(BASE_POPULATE);
 
     const creatorId = toId(ticket.createdBy);
-    const recipients = [creatorId, programmerId, req.user.id]
+    const recipients = [creatorId, toId(ticket.assignedAgent), toId(ticket.assignedProgrammer), req.user.id]
       .map((id) => (id ? String(id) : null))
       .filter(Boolean)
       .filter((id) => id !== String(req.user.id));
@@ -351,10 +409,6 @@ router.patch('/:id/status', ensureRole(['agent']), async (req, res) => {
       return res.status(403).json({ ok: false, error: 'Ticket asignado a otro asesor' });
     }
 
-    if (ticket.resolvedAt) {
-      return res.status(400).json({ ok: false, error: 'El ticket ya fue marcado como resuelto' });
-    }
-
     const updates = [];
 
     if (priority && priority !== ticket.priority) {
@@ -367,6 +421,15 @@ router.patch('/:id/status', ensureRole(['agent']), async (req, res) => {
       if (!allowedStatus.includes(status)) {
         return res.status(400).json({ ok: false, error: 'Estado no permitido' });
       }
+
+      if (
+        ['closed', 'resolved'].includes(ticket.status) &&
+        ['open', 'in_progress', 'awaiting_client'].includes(status) &&
+        ticket.survey
+      ) {
+        return res.status(400).json({ ok: false, error: 'No se puede reabrir un ticket con encuesta final registrada' });
+      }
+
       ticket.status = status;
       if (status !== 'awaiting_client') {
         ticket.programmerReady = false;
@@ -374,7 +437,14 @@ router.patch('/:id/status', ensureRole(['agent']), async (req, res) => {
       if (status === 'resolved') {
         ticket.resolvedAt = new Date();
         ticket.resolvedBy = req.user.id;
+        ticket.closedAt = null;
         ticket.programmerReady = false;
+      } else if (['open', 'in_progress', 'awaiting_client'].includes(status)) {
+        ticket.closedAt = null;
+        if (ticket.resolvedAt) {
+          ticket.resolvedAt = null;
+          ticket.resolvedBy = null;
+        }
       }
       updates.push(`Estado cambiado a ${status}`);
     }
@@ -449,10 +519,27 @@ router.patch('/:id/programmer-ready', ensureRole(['programmer']), async (req, re
 
 router.patch('/:id/satisfaction', ensureRole(['client']), async (req, res) => {
   try {
+    const answersRaw = req.body.answers || {};
+    const normalizedAnswers = {
+      q1: Number(answersRaw.q1),
+      q2: Number(answersRaw.q2),
+      q3: Number(answersRaw.q3),
+      q4: Number(answersRaw.q4),
+      q5: Number(answersRaw.q5)
+    };
+    const hasStructuredAnswers = Object.values(normalizedAnswers).every((value) => Number.isFinite(value));
     const rating = Number(req.body.rating);
     const comment = typeof req.body.comment === 'string' ? req.body.comment.trim() : '';
-    if (!Number.isFinite(rating) || rating < 1 || rating > 5) {
+
+    if (!hasStructuredAnswers && (!Number.isFinite(rating) || rating < 1 || rating > 5)) {
       return res.status(400).json({ ok: false, error: 'Calificacion invalida' });
+    }
+
+    if (hasStructuredAnswers) {
+      const invalidAnswer = Object.values(normalizedAnswers).some((value) => value < 1 || value > 5);
+      if (invalidAnswer) {
+        return res.status(400).json({ ok: false, error: 'Las respuestas de encuesta deben estar entre 1 y 5' });
+      }
     }
 
     const ticket = await Ticket.findById(req.params.id);
@@ -468,11 +555,26 @@ router.patch('/:id/satisfaction', ensureRole(['client']), async (req, res) => {
       return res.status(400).json({ ok: false, error: 'El ticket debe estar resuelto antes de evaluarlo' });
     }
 
-    if (ticket.satisfactionRating) {
+    if (ticket.satisfactionRating || ticket.survey) {
       return res.status(409).json({ ok: false, error: 'La satisfaccion ya fue registrada' });
     }
 
-    ticket.satisfactionRating = Math.round(rating);
+    const surveyAnswers = hasStructuredAnswers
+      ? normalizedAnswers
+      : { q1: rating, q2: rating, q3: rating, q4: rating, q5: rating };
+    const average =
+      (surveyAnswers.q1 + surveyAnswers.q2 + surveyAnswers.q3 + surveyAnswers.q4 + surveyAnswers.q5) / 5;
+
+    const survey = await Survey.create({
+      ticket: ticket._id,
+      user: req.user.id,
+      responses: surveyAnswers,
+      comment: comment ? comment.slice(0, 600) : '',
+      averageRating: Number(average.toFixed(2))
+    });
+
+    ticket.survey = survey._id;
+    ticket.satisfactionRating = Number(average.toFixed(2));
     if (comment) ticket.satisfactionComment = comment.slice(0, 600);
     ticket.status = 'closed';
     ticket.closedAt = new Date();
@@ -519,6 +621,7 @@ router.delete('/:id', ensureRole(['admin', 'agent']), async (req, res) => {
     }
 
     await Notification.deleteMany({ ticket: ticket._id });
+    await Survey.deleteMany({ ticket: ticket._id });
     await Ticket.deleteOne({ _id: ticket._id });
 
     const recipients = getWatcherIds(ticket, req.user.id);

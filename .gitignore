@@ -16,6 +16,10 @@ backend/dist/
 backend/.env
 frontend/.env
 
+# Local AI models and cache
+backend/local-models/
+backend/.cache/
+
 # Coverage / test
 coverage/
 

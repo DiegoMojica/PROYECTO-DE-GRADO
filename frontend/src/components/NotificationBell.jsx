@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-export default function NotificationBell({ notifications, onMarkRead, onRefresh }) {
+export default function NotificationBell({ notifications, onMarkRead, onMarkAllRead, onRefresh }) {
   const [open, setOpen] = useState(false);
 
   const unreadCount = notifications.filter((n) => !n.read).length;
@@ -15,7 +15,14 @@ export default function NotificationBell({ notifications, onMarkRead, onRefresh 
         <div className="notification-panel">
           <header>
             <h4>Actividad reciente</h4>
-            <button type="button" onClick={onRefresh}>Actualizar</button>
+            <div className="notification-actions">
+              {unreadCount > 0 && (
+                <button type="button" onClick={onMarkAllRead}>
+                  Marcar todo leido
+                </button>
+              )}
+              <button type="button" onClick={onRefresh}>Actualizar</button>
+            </div>
           </header>
           <ul>
             {notifications.map((notification) => (

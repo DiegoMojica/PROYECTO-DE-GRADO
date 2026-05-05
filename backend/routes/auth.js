@@ -17,15 +17,18 @@ function requireAdmin(req, res, next) {
 // Register (simple)
 router.post('/register', async (req, res) => {
   try {
-    const { name, email, password, role } = req.body;
+    const { name, email, password } = req.body;
     if (!name || !email || !password) {
       return res.status(400).json({ ok: false, error: 'Nombre, correo y contrasena son obligatorios' });
+    }
+    if (password.length < 6) {
+      return res.status(400).json({ ok: false, error: 'La contrasena debe tener al menos 6 caracteres' });
     }
     const exists = await User.findOne({ email });
     if (exists) {
       return res.status(409).json({ ok: false, error: 'El correo ya esta registrado' });
     }
-    const user = new User({ name, email, role });
+    const user = new User({ name, email, role: 'client' });
     await user.setPassword(password);
     await user.save();
     res.json({ ok: true, userId: user._id });
@@ -81,6 +84,9 @@ router.post('/admin/users', auth(), requireAdmin, async (req, res) => {
     if (!name || !email || !password) {
       return res.status(400).json({ ok: false, error: 'Nombre, correo y contrasena son obligatorios' });
     }
+    if (password.length < 6) {
+      return res.status(400).json({ ok: false, error: 'La contrasena debe tener al menos 6 caracteres' });
+    }
     const exists = await User.findOne({ email });
     if (exists) return res.status(409).json({ ok: false, error: 'El correo ya esta registrado' });
     const user = new User({ name, email, role });
@@ -110,7 +116,12 @@ router.put('/admin/users/:id', auth(), requireAdmin, async (req, res) => {
     }
     if (name) user.name = name;
     if (role) user.role = role;
-    if (password) await user.setPassword(password);
+    if (password) {
+      if (password.length < 6) {
+        return res.status(400).json({ ok: false, error: 'La contrasena debe tener al menos 6 caracteres' });
+      }
+      await user.setPassword(password);
+    }
     await user.save();
     res.json({ ok: true, user: { id: user._id, name: user.name, email: user.email, role: user.role } });
   } catch (err) {

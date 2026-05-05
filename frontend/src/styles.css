@@ -325,7 +325,7 @@ a {
 
 /* Dashboard */
 .dashboard-wrapper {
-  width: min(1200px, 100%);
+  width: min(1660px, 100%);
   min-height: 100vh;
   padding: clamp(28px, 6vw, 60px);
   display: flex;
@@ -423,32 +423,73 @@ a {
 .dashboard-main {
   display: grid;
   gap: 24px;
-  grid-template-columns: minmax(0, 1fr) minmax(340px, 360px);
+  grid-template-columns: minmax(560px, 1.05fr) minmax(620px, 1fr);
   align-items: start;
 }
 
-@media (max-width: 1280px) {
+@media (max-width: 1480px) {
   .dashboard-main {
     grid-template-columns: 1fr;
   }
+}
+
+.tickets-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.tickets-upper {
+  display: grid;
+  gap: 24px;
+  align-items: start;
+}
+
+.tickets-upper.with-controls {
+  display: grid;
+  gap: 24px;
+  grid-template-columns: minmax(340px, 430px) minmax(0, 1fr);
+}
+
+.tickets-upper.without-controls {
+  grid-template-columns: 1fr;
+}
+
+.tickets-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.tickets-table-block {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
 
 .tickets-column,
 .details-column {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 28px;
+  min-width: 0;
 }
 
 .chatbot-wrapper {
   padding: 0;
+  width: 100%;
+}
+
+.chatbot-panel-section {
+  margin-top: 30px;
 }
 
 .chatbot-prompts {
   display: flex;
-  gap: 8px;
+  gap: 10px;
   flex-wrap: wrap;
-  padding: 0 0 16px;
+  padding: 0 0 18px;
 }
 
 .chatbot-prompts button {
@@ -513,48 +554,58 @@ a {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  width: 100%;
+  min-height: 700px;
 }
 
 .chatbot-header {
-  padding: 20px 24px;
+  padding: 22px 24px;
   border-bottom: 1px solid rgba(148, 163, 184, 0.15);
   background: rgba(30, 41, 59, 0.7);
 }
 
 .chatbot-header h2 {
   margin: 0;
-  font-size: 18px;
+  font-size: 28px;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
 }
 
 .chatbot-header p {
-  margin: 6px 0 0;
-  font-size: 12px;
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.45;
   color: var(--text-muted);
 }
 
 .chatbot-body {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
   padding: 20px;
-  height: 420px;
+  height: clamp(640px, 70vh, 900px);
+  min-height: 620px;
 }
 
 .chatbot-messages {
   flex: 1;
   overflow-y: auto;
-  padding-right: 6px;
+  padding-right: 10px;
+  padding-bottom: 4px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
 }
 
 .chatbot-bubble {
-  max-width: 82%;
-  padding: 12px 16px;
+  max-width: 88%;
+  padding: 13px 16px;
   border-radius: 16px;
   line-height: 1.5;
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.25);
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .chatbot-bubble.user {
@@ -570,10 +621,19 @@ a {
   border: 1px solid rgba(148, 163, 184, 0.2);
 }
 
+.chatbot-source {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  opacity: 0.78;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+}
+
 .chatbot-input {
   display: flex;
-  gap: 10px;
-  padding-top: 4px;
+  gap: 12px;
+  padding-top: 8px;
 }
 
 .chatbot-input input {
@@ -582,8 +642,8 @@ a {
   border: 1px solid rgba(148, 163, 184, 0.25);
   background: rgba(15, 23, 42, 0.7);
   color: var(--text-main);
-  font-size: 14px;
-  padding: 12px 14px;
+  font-size: 15px;
+  padding: 13px 15px;
   outline: none;
 }
 
@@ -598,7 +658,8 @@ a {
   background: linear-gradient(135deg, var(--accent), #ec4899);
   color: #0f172a;
   font-weight: 600;
-  padding: 12px 16px;
+  padding: 13px 18px;
+  white-space: nowrap;
   cursor: pointer;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
@@ -678,22 +739,35 @@ a {
   border: 1px solid var(--card-border);
   background: var(--card-bg);
   box-shadow: var(--shadow-lg);
-  padding: 24px;
+  padding: 24px 18px 18px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
 }
 
 .ticket-table header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  padding: 4px 10px 6px;
+}
+
+.ticket-table header h2 {
+  margin: 0;
+  font-size: 38px;
+}
+
+.ticket-table header span {
+  font-size: 18px;
+  color: var(--text-main);
 }
 
 .table-scroll {
   overflow: auto;
+  height: clamp(620px, 72vh, 920px);
   border-radius: var(--radius-md);
   border: 1px solid rgba(148, 163, 184, 0.12);
+  scrollbar-gutter: stable both-edges;
 }
 
 .user-form {
@@ -741,15 +815,41 @@ a {
 .ticket-table table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 820px;
+  min-width: 1460px;
 }
 
 .ticket-table th,
 .ticket-table td {
-  padding: 12px 16px;
+  padding: 14px 12px;
   border-bottom: 1px solid rgba(148, 163, 184, 0.12);
   text-align: left;
-  font-size: 13px;
+  font-size: 14px;
+  vertical-align: top;
+  white-space: nowrap;
+}
+
+.ticket-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: rgba(15, 23, 42, 0.96);
+  backdrop-filter: blur(8px);
+  font-size: 15px;
+  letter-spacing: 0.01em;
+}
+
+.ticket-table th:first-child {
+  left: 0;
+  z-index: 4;
+  box-shadow: 8px 0 18px rgba(2, 6, 23, 0.45);
+}
+
+.ticket-table td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: rgba(8, 20, 42, 0.98);
+  box-shadow: 8px 0 18px rgba(2, 6, 23, 0.35);
 }
 
 .ticket-table tr:hover {
@@ -757,41 +857,126 @@ a {
   cursor: pointer;
 }
 
+.ticket-table tr:hover td:first-child {
+  background: rgba(19, 40, 68, 0.98);
+}
+
 .ticket-table tr.selected {
   background: rgba(56, 189, 248, 0.1);
+}
+
+.ticket-table tr.selected td:first-child {
+  background: rgba(25, 57, 96, 0.98);
+}
+
+.ticket-col-title,
+.ticket-col-client,
+.ticket-col-assigned {
+  white-space: normal;
+  line-height: 1.35;
+}
+
+.ticket-col-updated {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.ticket-id-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 220px;
+}
+
+.ticket-id-value {
+  display: inline-block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  font-size: 12px;
+  color: #bfdbfe;
+  word-break: break-all;
+  line-height: 1.3;
+}
+
+.ticket-id-copy {
+  align-self: flex-start;
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  background: rgba(56, 189, 248, 0.14);
+  color: #7dd3fc;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.ticket-id-copy:hover {
+  background: rgba(56, 189, 248, 0.22);
 }
 
 .ticket-filters {
   border-radius: var(--radius-lg);
   border: 1px solid var(--card-border);
   background: rgba(15, 23, 42, 0.6);
-  padding: 20px;
+  padding: 20px 22px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
+}
+
+.ticket-filters-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.ticket-filters-header h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.ticket-filters-header span {
+  font-size: 12px;
+  color: var(--text-muted);
 }
 
 .filter-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 12px;
 }
 
-.filter-grid label {
+.filter-control {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.filter-control-search {
+  grid-column: 1 / -1;
+}
+
+.filter-control-status {
+  grid-column: span 6;
+}
+
+.filter-control-priority {
+  grid-column: span 6;
+}
+
+.filter-grid label {
   font-size: 13px;
   color: var(--text-muted);
 }
 
 .filter-grid input,
 .filter-grid select {
-  border-radius: 10px;
+  border-radius: 12px;
   border: 1px solid rgba(148, 163, 184, 0.15);
   background: rgba(15, 23, 42, 0.75);
-  padding: 10px 12px;
+  padding: 12px 13px;
   color: var(--text-main);
+  font-size: 14px;
 }
 
 .filter-actions {
@@ -1060,10 +1245,10 @@ a {
   border: 1px solid var(--card-border);
   background: var(--card-bg);
   box-shadow: var(--shadow-lg);
-  padding: 24px;
+  padding: 22px;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 22px;
 }
 
 .ticket-detail header {
@@ -1118,24 +1303,29 @@ a {
 
 .detail-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(280px, 350px);
+  grid-template-columns: 1fr;
   gap: 24px;
 }
 
-@media (max-width: 1200px) {
-  .detail-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .detail-grid aside {
-    order: -1;
-  }
+.detail-grid aside {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+  align-items: start;
 }
 
-@media (max-width: 768px) {
-  .detail-grid aside {
-    order: initial;
-  }
+.detail-grid aside > h3 {
+  grid-column: 1 / -1;
+  margin-bottom: 2px;
+}
+
+.detail-grid h3 {
+  margin: 0 0 12px;
+}
+
+.detail-grid > div,
+.detail-grid aside {
+  min-width: 0;
 }
 
 .message-feed {
@@ -1145,7 +1335,8 @@ a {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  max-height: 360px;
+  min-height: 320px;
+  max-height: 460px;
   overflow-y: auto;
 }
 
@@ -1183,6 +1374,9 @@ a {
 .message-row p {
   margin: 0;
   font-size: 14px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .message-empty {
@@ -1199,6 +1393,7 @@ a {
   flex-direction: column;
   gap: 12px;
   background: rgba(15, 23, 42, 0.65);
+  min-height: 100%;
 }
 
 .action-block textarea {
@@ -1266,7 +1461,25 @@ a {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 10px;
   margin-bottom: 12px;
+}
+
+.notification-panel header button {
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(148, 163, 184, 0.14);
+  color: var(--text-main);
+  border-radius: 10px;
+  padding: 6px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.notification-actions {
+  display: inline-flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .notification-panel ul {
@@ -1327,6 +1540,10 @@ a {
     grid-template-columns: 1fr;
   }
 
+  .tickets-upper {
+    grid-template-columns: 1fr;
+  }
+
   .stats-grid {
     grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   }
@@ -1339,6 +1556,10 @@ a {
     flex-direction: column;
     align-items: flex-start;
     gap: 12px;
+  }
+
+  .detail-grid aside {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -1360,7 +1581,11 @@ a {
   }
 
   .ticket-table table {
-    min-width: 640px;
+    min-width: 1240px;
+  }
+
+  .table-scroll {
+    height: clamp(500px, 68vh, 760px);
   }
 
   .notification-panel {
@@ -1370,6 +1595,15 @@ a {
     bottom: 16px;
     top: auto;
     width: auto;
+  }
+
+  .notification-panel header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .notification-actions {
+    justify-content: flex-start;
   }
 
   .ticket-board {
@@ -1386,12 +1620,36 @@ a {
     grid-template-columns: 1fr;
   }
 
+  .chatbot-body {
+    height: clamp(560px, 68vh, 760px);
+    min-height: 540px;
+  }
+
+  .chatbot-card {
+    min-height: 0;
+  }
+
   .filter-actions {
     flex-direction: column;
   }
 
   .filter-actions button {
     width: 100%;
+  }
+
+  .filter-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .filter-control-status,
+  .filter-control-priority {
+    grid-column: auto;
+  }
+
+  .ticket-filters-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
   }
 }
 

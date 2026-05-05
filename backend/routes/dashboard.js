@@ -14,15 +14,36 @@ function ensureRole(roleList) {
   };
 }
 
+function mergeMatch(baseFilter = {}, extraFilter = {}) {
+  const keysBase = Object.keys(baseFilter);
+  const keysExtra = Object.keys(extraFilter);
+  if (!keysBase.length) return extraFilter;
+  if (!keysExtra.length) return baseFilter;
+  return { $and: [baseFilter, extraFilter] };
+}
+
 router.get('/summary', ensureRole(['admin', 'agent']), async (req, res) => {
   try {
+    const roleFilter =
+      req.user.role === 'agent'
+        ? {
+            $or: [{ assignedAgent: req.user.id }, { assignedAgent: null }, { watchers: req.user.id }]
+          }
+        : {};
+
     const [totalTickets, byStatus, byPriority, users, resolutionByPriority, satisfactionDistribution, satisfactionSummary] = await Promise.all([
-      Ticket.countDocuments(),
-      Ticket.aggregate([{ $group: { _id: '$status', total: { $sum: 1 } } }]),
-      Ticket.aggregate([{ $group: { _id: '$priority', total: { $sum: 1 } } }]),
+      Ticket.countDocuments(roleFilter),
+      Ticket.aggregate([
+        { $match: roleFilter },
+        { $group: { _id: '$status', total: { $sum: 1 } } }
+      ]),
+      Ticket.aggregate([
+        { $match: roleFilter },
+        { $group: { _id: '$priority', total: { $sum: 1 } } }
+      ]),
       User.aggregate([{ $group: { _id: '$role', total: { $sum: 1 } } }]),
       Ticket.aggregate([
-        { $match: { resolvedAt: { $ne: null } } },
+        { $match: mergeMatch(roleFilter, { resolvedAt: { $ne: null } }) },
         {
           $project: {
             priority: 1,
@@ -44,12 +65,17 @@ router.get('/summary', ensureRole(['admin', 'agent']), async (req, res) => {
         { $sort: { _id: 1 } }
       ]),
       Ticket.aggregate([
-        { $match: { satisfactionRating: { $gte: 1 } } },
-        { $group: { _id: '$satisfactionRating', total: { $sum: 1 } } },
+        { $match: mergeMatch(roleFilter, { satisfactionRating: { $gte: 1 } }) },
+        {
+          $group: {
+            _id: { $round: ['$satisfactionRating', 0] },
+            total: { $sum: 1 }
+          }
+        },
         { $sort: { _id: 1 } }
       ]),
       Ticket.aggregate([
-        { $match: { satisfactionRating: { $gte: 1 } } },
+        { $match: mergeMatch(roleFilter, { satisfactionRating: { $gte: 1 } }) },
         {
           $group: {
             _id: null,
@@ -62,11 +88,11 @@ router.get('/summary', ensureRole(['admin', 'agent']), async (req, res) => {
 
     const ticketsLast7Days = await Ticket.aggregate([
       {
-        $match: {
+        $match: mergeMatch(roleFilter, {
           createdAt: {
             $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
           }
-        }
+        })
       },
       {
         $group: {

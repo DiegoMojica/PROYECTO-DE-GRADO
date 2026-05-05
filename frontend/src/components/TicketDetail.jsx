@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 
 const STATUS_AGENT_OPTIONS = [
-  { value: 'open', label: 'Abierto' },
-  { value: 'in_progress', label: 'En progreso' },
-  { value: 'awaiting_client', label: 'Esperando revision del cliente' },
+  { value: 'open', label: 'Pendiente' },
+  { value: 'in_progress', label: 'En proceso' },
+  { value: 'awaiting_client', label: 'Esperando cliente' },
   { value: 'resolved', label: 'Resuelto' }
 ];
 
@@ -13,6 +13,18 @@ const PRIORITY_OPTIONS = [
   { value: 'high', label: 'Alta' },
   { value: 'critical', label: 'Critica' }
 ];
+
+const SURVEY_QUESTIONS = [
+  { key: 'q1', label: '1. La atencion recibida fue rapida?' },
+  { key: 'q2', label: '2. El chatbot ayudo a entender o resolver el problema?' },
+  { key: 'q3', label: '3. Considera facil el uso de la plataforma?' },
+  { key: 'q4', label: '4. Recibio seguimiento adecuado del caso?' },
+  { key: 'q5', label: '5. Recomendaria este sistema a otros usuarios?' }
+];
+
+function defaultSurveyAnswers(base = 5) {
+  return { q1: base, q2: base, q3: base, q4: base, q5: base };
+}
 
 export default function TicketDetail({
   ticket,
@@ -30,8 +42,13 @@ export default function TicketDetail({
   const [internal, setInternal] = useState(false);
   const [status, setStatus] = useState(ticket.status);
   const [priority, setPriority] = useState(ticket.priority);
-  const [programmerId, setProgrammerId] = useState(ticket.assignedProgrammer?._id || '');
-  const [satisfaction, setSatisfaction] = useState(5);
+  const [agentId, setAgentId] = useState(ticket.assignedAgent?._id || ticket.assignedAgent?.id || '');
+  const [programmerId, setProgrammerId] = useState(
+    ticket.assignedProgrammer?._id || ticket.assignedProgrammer?.id || ''
+  );
+  const [surveyAnswers, setSurveyAnswers] = useState(
+    ticket.survey?.responses || defaultSurveyAnswers(ticket.satisfactionRating || 5)
+  );
   const [satisfactionComment, setSatisfactionComment] = useState('');
 
   useEffect(() => {
@@ -39,21 +56,30 @@ export default function TicketDetail({
     setInternal(false);
     setStatus(ticket.status);
     setPriority(ticket.priority);
-    setProgrammerId(ticket.assignedProgrammer?._id || '');
-    setSatisfaction(ticket.satisfactionRating || 5);
+    setAgentId(ticket.assignedAgent?._id || ticket.assignedAgent?.id || '');
+    setProgrammerId(ticket.assignedProgrammer?._id || ticket.assignedProgrammer?.id || '');
+    setSurveyAnswers(ticket.survey?.responses || defaultSurveyAnswers(ticket.satisfactionRating || 5));
     setSatisfactionComment('');
-  }, [ticket._id, ticket.status, ticket.priority, ticket.assignedProgrammer?._id, ticket.satisfactionRating]);
+  }, [
+    ticket._id,
+    ticket.status,
+    ticket.priority,
+    ticket.assignedAgent?._id,
+    ticket.assignedProgrammer?._id,
+    ticket.survey,
+    ticket.satisfactionRating
+  ]);
 
   const canSendMessage = ['client', 'agent', 'programmer'].includes(currentUser.role);
   const canUseInternal = currentUser.role === 'agent';
-  const canAssign = currentUser.role === 'agent';
-  const canChangeStatus = currentUser.role === 'agent' && !ticket.resolvedAt;
-  const canChangePriority = currentUser.role === 'agent' && !ticket.resolvedAt;
-  const canMarkReady = currentUser.role === 'programmer' && !ticket.programmerReady;
+  const canAssign = ['agent', 'admin'].includes(currentUser.role);
+  const canChangeStatus = currentUser.role === 'agent';
+  const canChangePriority = currentUser.role === 'agent';
+  const canMarkReady = currentUser.role === 'programmer' && !ticket.programmerReady && ticket.status !== 'closed';
   const hasStatusChange = status !== ticket.status || priority !== ticket.priority;
-  const canSubmitSatisfaction =
-    currentUser.role === 'client' && ticket.status === 'resolved' && !ticket.satisfactionRating;
-  const hasSatisfaction = typeof ticket.satisfactionRating === 'number' && ticket.satisfactionRating > 0;
+  const canSubmitSatisfaction = currentUser.role === 'client' && ticket.status === 'resolved' && !ticket.survey;
+  const hasSatisfaction =
+    (typeof ticket.satisfactionRating === 'number' && ticket.satisfactionRating > 0) || Boolean(ticket.survey);
   const agentAssignedId = ticket.assignedAgent?._id || ticket.assignedAgent?.id;
   const canDeleteTicket =
     currentUser.role === 'admin' ||
@@ -66,6 +92,10 @@ export default function TicketDetail({
     return [{ value: ticket.status, label: ticket.status }];
   }, [currentUser.role, ticket.status]);
 
+  const hasAssignmentChange =
+    String(agentId || '') !== String(ticket.assignedAgent?._id || ticket.assignedAgent?.id || '') ||
+    String(programmerId || '') !== String(ticket.assignedProgrammer?._id || ticket.assignedProgrammer?.id || '');
+
   const sendMessage = async () => {
     if (!message.trim()) return;
     if (!onSendMessage) return;
@@ -75,15 +105,17 @@ export default function TicketDetail({
   };
 
   const updateStatus = async () => {
-    if (!canChangeStatus) return;
-    if (status === ticket.status && priority === ticket.priority) return;
-    if (!onChangeStatus) return;
+    if (!canChangeStatus || !onChangeStatus) return;
+    if (!hasStatusChange) return;
     await onChangeStatus(ticket._id, { status, priority });
   };
 
-  const assignProgrammer = async () => {
-    if (!canAssign || !programmerId || ticket.assignedProgrammer || !onAssign) return;
-    await onAssign(ticket._id, { programmerId });
+  const saveAssignment = async () => {
+    if (!canAssign || !onAssign || !hasAssignmentChange) return;
+    await onAssign(ticket._id, {
+      agentId: agentId || null,
+      programmerId: programmerId || null
+    });
   };
 
   const markProgrammerReady = async () => {
@@ -93,8 +125,8 @@ export default function TicketDetail({
 
   const submitSatisfactionForm = async () => {
     if (!canSubmitSatisfaction || !onSubmitSatisfaction) return;
-    await onSubmitSatisfaction(ticket._id, { rating: satisfaction, comment: satisfactionComment });
-    setSatisfaction(5);
+    await onSubmitSatisfaction(ticket._id, { answers: surveyAnswers, comment: satisfactionComment });
+    setSurveyAnswers(defaultSurveyAnswers(5));
     setSatisfactionComment('');
   };
 
@@ -122,7 +154,9 @@ export default function TicketDetail({
           <span className="tag">{ticket.priority}</span>
           <span className="tag">{ticket.status}</span>
           {ticket.assignedAgent?.name && <span className="tag tag-agent">Asesor: {ticket.assignedAgent.name}</span>}
-          {ticket.assignedProgrammer?.name && <span className="tag tag-programmer">Prog: {ticket.assignedProgrammer.name}</span>}
+          {ticket.assignedProgrammer?.name && (
+            <span className="tag tag-programmer">Prog: {ticket.assignedProgrammer.name}</span>
+          )}
         </div>
       </header>
 
@@ -158,7 +192,7 @@ export default function TicketDetail({
                 {loading ? 'Eliminando...' : 'Eliminar ticket'}
               </button>
               <small style={{ color: 'var(--text-muted)', fontSize: 12 }}>
-                Esta acción removerá el ticket y su historial.
+                Esta accion removera el ticket y su historial.
               </small>
             </div>
           )}
@@ -169,7 +203,11 @@ export default function TicketDetail({
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
                 rows={3}
-                placeholder={currentUser.role === 'programmer' ? 'Comparte avances o preguntas para el asesor...' : 'Escribe tu mensaje...'}
+                placeholder={
+                  currentUser.role === 'programmer'
+                    ? 'Comparte avances o preguntas para el asesor...'
+                    : 'Escribe tu mensaje...'
+                }
               />
               {canUseInternal && (
                 <label className="checkbox-inline">
@@ -217,14 +255,24 @@ export default function TicketDetail({
 
           {canAssign && (
             <div className="action-block">
+              {currentUser.role === 'admin' && (
+                <label>
+                  <span>Asesor asignado</span>
+                  <select value={agentId} onChange={(e) => setAgentId(e.target.value)}>
+                    <option value="">-- Sin asesor --</option>
+                    {(usersByRole.agent || []).map((agent) => (
+                      <option key={agent.id} value={agent.id}>
+                        {agent.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+
               <label>
                 <span>Programador asignado</span>
-                <select
-                  value={programmerId}
-                  onChange={(e) => setProgrammerId(e.target.value)}
-                  disabled={Boolean(ticket.assignedProgrammer)}
-                >
-                  <option value="">-- Selecciona programador --</option>
+                <select value={programmerId} onChange={(e) => setProgrammerId(e.target.value)}>
+                  <option value="">-- Sin programador --</option>
                   {(usersByRole.programmer || []).map((user) => (
                     <option key={user.id} value={user.id}>
                       {user.name}
@@ -232,16 +280,11 @@ export default function TicketDetail({
                   ))}
                 </select>
               </label>
-              <button
-                type="button"
-                className="ghost-button"
-                onClick={assignProgrammer}
-                disabled={loading || Boolean(ticket.assignedProgrammer) || !programmerId}
-              >
-                {ticket.assignedProgrammer ? 'Programador asignado' : 'Asignar programador'}
+              <button type="button" className="ghost-button" onClick={saveAssignment} disabled={loading || !hasAssignmentChange}>
+                Guardar asignacion
               </button>
               <small style={{ color: 'var(--text-muted)', fontSize: 12 }}>
-                Una vez asignado no se puede cambiar el programador.
+                Se permite reasignar ticket segun permisos del rol.
               </small>
             </div>
           )}
@@ -258,16 +301,26 @@ export default function TicketDetail({
           {canSubmitSatisfaction && (
             <div className="action-block">
               <h4>Encuesta de satisfaccion</h4>
-              <label>
-                <span>Calificacion (1 = muy baja, 5 = excelente)</span>
-                <select value={satisfaction} onChange={(e) => setSatisfaction(Number(e.target.value))}>
-                  {[1, 2, 3, 4, 5].map((value) => (
-                    <option key={value} value={value}>
-                      {value}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              {SURVEY_QUESTIONS.map((question) => (
+                <label key={question.key}>
+                  <span>{question.label}</span>
+                  <select
+                    value={surveyAnswers[question.key]}
+                    onChange={(e) =>
+                      setSurveyAnswers((prev) => ({
+                        ...prev,
+                        [question.key]: Number(e.target.value)
+                      }))
+                    }
+                  >
+                    {[1, 2, 3, 4, 5].map((value) => (
+                      <option key={value} value={value}>
+                        {value}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ))}
               <label>
                 <span>Comentario (opcional)</span>
                 <textarea
@@ -287,9 +340,20 @@ export default function TicketDetail({
             <div className="action-block">
               <h4>Retroalimentacion del cliente</h4>
               <p>
-                Calificacion: <strong>{ticket.satisfactionRating}/5</strong>
+                Calificacion promedio: <strong>{ticket.satisfactionRating}/5</strong>
               </p>
-              {ticket.satisfactionComment && <p style={{ marginTop: 8 }}>"{ticket.satisfactionComment}"</p>}
+              {ticket.survey?.responses && (
+                <ul className="status-history">
+                  {SURVEY_QUESTIONS.map((question) => (
+                    <li key={`survey-${question.key}`}>
+                      {question.label} <strong>{ticket.survey.responses[question.key]}/5</strong>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {(ticket.survey?.comment || ticket.satisfactionComment) && (
+                <p style={{ marginTop: 8 }}>"{ticket.survey?.comment || ticket.satisfactionComment}"</p>
+              )}
             </div>
           )}
 

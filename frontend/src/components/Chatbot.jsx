@@ -2,9 +2,9 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { socket, ensureSocketConnection, joinRoom } from '../services/socket';
 
 const QUICK_PROMPTS = [
-  { label: 'Cómo crear un ticket', text: '¿Cómo puedo crear un ticket nuevo?' },
-  { label: 'Estado de mi ticket', text: '¿Cuál es el estado de mi ticket 000000000000000000000000?' },
-  { label: 'Requisitos de visita', text: 'Necesito programar una visita técnica' },
+  { label: 'Como crear un ticket', text: 'Como puedo crear un ticket nuevo?' },
+  { label: 'Estado de mi ticket', text: 'Cual es el estado de mi ticket 000000000000000000000000?' },
+  { label: 'Requisitos de visita', text: 'Necesito programar una visita tecnica' },
   { label: 'Soporte urgente', text: 'Tengo un problema urgente, no puedo acceder al sistema' }
 ];
 
@@ -13,25 +13,61 @@ export default function Chatbot({ userId }) {
   const [text, setText] = useState('');
   const room = userId || 'anon-room';
   const scrollRef = useRef(null);
+  const lastBotReplyRef = useRef({ text: '', at: 0 });
+  const processedMessageIdsRef = useRef([]);
+
+  const rememberProcessedMessageId = useCallback((clientMessageId) => {
+    if (!clientMessageId) return;
+    processedMessageIdsRef.current.push(String(clientMessageId));
+    if (processedMessageIdsRef.current.length > 250) {
+      processedMessageIdsRef.current.splice(0, processedMessageIdsRef.current.length - 250);
+    }
+  }, []);
+
+  const hasProcessedMessageId = useCallback((clientMessageId) => {
+    if (!clientMessageId) return false;
+    return processedMessageIdsRef.current.includes(String(clientMessageId));
+  }, []);
+
+  const createClientMessageId = useCallback(
+    () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    []
+  );
 
   useEffect(() => {
     ensureSocketConnection(userId);
     joinRoom(room);
-    const handler = ({ reply }) => {
-      setMessages((prev) => [...prev, { author: 'bot', text: reply }]);
+
+    const handler = ({ reply, source, clientMessageId }) => {
+      if (clientMessageId && hasProcessedMessageId(clientMessageId)) return;
+
+      const normalizedReply = (reply || '').trim();
+      const now = Date.now();
+      const isDuplicate =
+        normalizedReply &&
+        normalizedReply === lastBotReplyRef.current.text &&
+        now - lastBotReplyRef.current.at < 1500;
+      if (isDuplicate) return;
+
+      lastBotReplyRef.current = { text: normalizedReply, at: now };
+      rememberProcessedMessageId(clientMessageId);
+      setMessages((prev) => [...prev, { author: 'bot', text: reply, source: source || 'rules' }]);
     };
+
     socket.on('chat_reply', handler);
     return () => {
       socket.off('chat_reply', handler);
     };
-  }, [room, userId]);
+  }, [hasProcessedMessageId, rememberProcessedMessageId, room, userId]);
 
   const send = useCallback(() => {
-    if (!text.trim()) return;
-    setMessages((prev) => [...prev, { author: 'user', text }]);
-    socket.emit('chat_message', { userId, text, room });
+    const outgoing = text.trim();
+    if (!outgoing) return;
+    const clientMessageId = createClientMessageId();
+    setMessages((prev) => [...prev, { author: 'user', text: outgoing }]);
+    socket.emit('chat_message', { userId, text: outgoing, room, clientMessageId });
     setText('');
-  }, [text, userId, room]);
+  }, [createClientMessageId, text, userId, room]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -52,10 +88,11 @@ export default function Chatbot({ userId }) {
 
   const sendPrompt = useCallback(
     (promptText) => {
+      const clientMessageId = createClientMessageId();
       setMessages((prev) => [...prev, { author: 'user', text: promptText }]);
-      socket.emit('chat_message', { userId, text: promptText, room });
+      socket.emit('chat_message', { userId, text: promptText, room, clientMessageId });
     },
-    [room, userId]
+    [createClientMessageId, room, userId]
   );
 
   return (
@@ -63,17 +100,13 @@ export default function Chatbot({ userId }) {
       <div className="chatbot-header">
         <h2>Chatbot IA</h2>
         <p>
-          Enter para enviar. Escape limpia el borrador. Si la IA no está disponible recibirás una guía paso a paso y podremos crear un ticket por ti.
+          Enter para enviar. Escape limpia el borrador. Si la IA no esta disponible recibiras una guia paso a paso y podremos crear un ticket por ti.
         </p>
       </div>
       <div className="chatbot-body">
         <div className="chatbot-prompts">
           {QUICK_PROMPTS.map((prompt) => (
-            <button
-              key={prompt.label}
-              type="button"
-              onClick={() => sendPrompt(prompt.text)}
-            >
+            <button key={prompt.label} type="button" onClick={() => sendPrompt(prompt.text)}>
               {prompt.label}
             </button>
           ))}
@@ -90,6 +123,11 @@ export default function Chatbot({ userId }) {
                 key={`${msg.author}-${index}`}
                 className={`chatbot-bubble ${msg.author === 'bot' ? 'bot' : 'user'}`}
               >
+                {msg.author === 'bot' && msg.source && (
+                  <div className="chatbot-source">
+                    {msg.source === 'ai' ? 'IA local' : 'Reglas'}
+                  </div>
+                )}
                 {msg.text}
               </div>
             ))

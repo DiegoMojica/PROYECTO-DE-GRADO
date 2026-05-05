@@ -2,17 +2,11 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 
 const API_BASE = process.env.REACT_APP_BACKEND_URL || 'http://localhost:4000';
-const ROLES = [
-  { value: 'client', label: 'Cliente' },
-  { value: 'agent', label: 'Agente' },
-  { value: 'admin', label: 'Administrador' }
-];
 
 export default function Login({ onLogin }) {
   const [email, setEmail] = useState('test@example.com');
   const [password, setPassword] = useState('password123');
   const [name, setName] = useState('');
-  const [role, setRole] = useState('client');
   const [isRegister, setIsRegister] = useState(false);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
@@ -32,7 +26,7 @@ export default function Login({ onLogin }) {
     try {
       setLoading(true);
       if (isRegister) {
-        await axios.post(`${API_BASE}/api/auth/register`, { name, email, password, role });
+        await axios.post(`${API_BASE}/api/auth/register`, { name, email, password });
         setMessage('Cuenta creada. Iniciando sesion...');
       }
 
@@ -50,7 +44,7 @@ export default function Login({ onLogin }) {
     } finally {
       setLoading(false);
     }
-  }, [loading, canSubmit, isRegister, name, email, password, role, onLogin]);
+  }, [loading, canSubmit, isRegister, name, email, password, onLogin]);
 
   const toggleMode = useCallback(() => {
     setIsRegister((value) => !value);
@@ -119,16 +113,9 @@ export default function Login({ onLogin }) {
             />
           </div>
 
-  {isRegister && (
-            <div className="input-wrapper">
-              <span aria-hidden="true">#</span>
-              <select value={role} onChange={(e) => setRole(e.target.value)}>
-                {ROLES.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+          {isRegister && (
+            <div className="auth-hint">
+              El registro crea cuentas con rol <strong>cliente</strong>. Los demas roles los administra un usuario administrador.
             </div>
           )}
 
