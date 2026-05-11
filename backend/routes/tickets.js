@@ -103,10 +103,13 @@ router.post('/', ensureRole(['client', 'agent', 'admin']), async (req, res) => {
       return res.status(400).json({ ok: false, error: 'Prioridad invalida' });
     }
 
+    const creator = await User.findById(req.user.id).select('name').lean();
+    const normalizedCompany = company || creator?.name || 'N/D';
+
     const ticket = await Ticket.create({
       title,
       description,
-      company,
+      company: normalizedCompany,
       priority,
       createdBy: req.user.id,
       watchers: [req.user.id]

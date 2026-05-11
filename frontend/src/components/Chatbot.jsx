@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { socket, ensureSocketConnection, joinRoom } from '../services/socket';
+import api from '../services/api';
 
 const QUICK_PROMPTS = [
   { label: 'Como crear un ticket', text: 'Como puedo crear un ticket nuevo?' },
@@ -63,11 +64,26 @@ export default function Chatbot({ userId }) {
   const send = useCallback(() => {
     const outgoing = text.trim();
     if (!outgoing) return;
-    const clientMessageId = createClientMessageId();
     setMessages((prev) => [...prev, { author: 'user', text: outgoing }]);
-    socket.emit('chat_message', { userId, text: outgoing, room, clientMessageId });
+    api
+      .post('/chatbot', { message: outgoing })
+      .then((res) => {
+        const reply = res?.data?.reply || 'No se pudo generar respuesta en este momento.';
+        const source = res?.data?.source || 'rules';
+        setMessages((prev) => [...prev, { author: 'bot', text: reply, source }]);
+      })
+      .catch(() => {
+        setMessages((prev) => [
+          ...prev,
+          {
+            author: 'bot',
+            text: 'Error al consultar el chatbot. Verifica que el backend este activo.',
+            source: 'rules'
+          }
+        ]);
+      });
     setText('');
-  }, [createClientMessageId, text, userId, room]);
+  }, [text]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -88,11 +104,92 @@ export default function Chatbot({ userId }) {
 
   const sendPrompt = useCallback(
     (promptText) => {
-      const clientMessageId = createClientMessageId();
       setMessages((prev) => [...prev, { author: 'user', text: promptText }]);
-      socket.emit('chat_message', { userId, text: promptText, room, clientMessageId });
+      api
+        .post('/chatbot', { message: promptText })
+        .then((res) => {
+          const reply = res?.data?.reply || 'No se pudo generar respuesta en este momento.';
+          const source = res?.data?.source || 'rules';
+          setMessages((prev) => [...prev, { author: 'bot', text: reply, source }]);
+        })
+        .catch(() => {
+          setMessages((prev) => [
+            ...prev,
+            {
+              author: 'bot',
+              text: 'Error al consultar el chatbot. Verifica que el backend este activo.',
+              source: 'rules'
+            }
+          ]);
+        });
     },
-    [createClientMessageId, room, userId]
+    []
+  );
+
+  const downloadReport = useCallback(async (range) => {
+    try {
+      const response = await api.get(`/reports/tickets?range=${range}`, {
+        responseType: 'blob'
+      });
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `reporte_${range}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          author: 'bot',
+          text: 'No se pudo descargar el reporte PDF. Verifica permisos y backend.',
+          source: 'rules'
+        }
+      ]);
+    }
+  }, []);
+
+  const renderActionButtons = useCallback(
+    (msg) => {
+      if (msg.author !== 'bot') return null;
+      const text = String(msg.text || '').toLowerCase();
+      const actions = [];
+
+      if (text.includes('/api/reports/tickets?range=weekly') || text.includes('resumen semanal generado')) {
+        actions.push(
+          <button
+            key="weekly"
+            type="button"
+            className="ghost-button"
+            style={{ marginTop: 10 }}
+            onClick={() => downloadReport('weekly')}
+          >
+            Descargar PDF semanal
+          </button>
+        );
+      }
+
+      if (text.includes('/api/reports/tickets?range=monthly') || text.includes('resumen mensual generado')) {
+        actions.push(
+          <button
+            key="monthly"
+            type="button"
+            className="ghost-button"
+            style={{ marginTop: 10, marginLeft: 8 }}
+            onClick={() => downloadReport('monthly')}
+          >
+            Descargar PDF mensual
+          </button>
+        );
+      }
+
+      if (!actions.length) return null;
+      return <div>{actions}</div>;
+    },
+    [downloadReport]
   );
 
   return (
@@ -127,6 +224,7 @@ export default function Chatbot({ userId }) {
                   </div>
                 )}
                 {msg.text}
+                {renderActionButtons(msg)}
               </div>
             ))
           )}

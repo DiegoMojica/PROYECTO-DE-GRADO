@@ -1,6 +1,7 @@
 const Ticket = require('../models/Ticket');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
+const Survey = require('../models/Survey');
 const mongoose = require('mongoose');
 const fs = require('fs');
 const path = require('path');
@@ -47,6 +48,36 @@ function normalize(text = '') {
 function isLikelyTicketId(text = '') {
   const match = text.match(/[a-f0-9]{24}/i);
   return match ? match[0] : null;
+}
+
+function isAdminActionRequested(simpleText = '') {
+  return (
+    wantsWeeklyReport(simpleText) ||
+    wantsMonthlyReport(simpleText) ||
+    wantsDeleteTicket(simpleText) ||
+    wantsBroadcastMessage(simpleText)
+  );
+}
+
+function wantsWeeklyReport(simpleText = '') {
+  return /(reporte|informe|resumen)/.test(simpleText) && /(semana|semanal|esta semana|ultimos 7 dias|ultimos siete dias)/.test(simpleText);
+}
+
+function wantsMonthlyReport(simpleText = '') {
+  return /(reporte|informe|resumen)/.test(simpleText) && /(mes|mensual|este mes|ultimos 30 dias|ultimo mes)/.test(simpleText);
+}
+
+function wantsDeleteTicket(simpleText = '') {
+  return /(eliminar|elimina|borrar|borra|quitar)/.test(simpleText) && /(ticket|caso)/.test(simpleText);
+}
+
+function wantsBroadcastMessage(simpleText = '') {
+  return (
+    /(mensaje|aviso|notificacion|comunicado|manda|enviar)/.test(simpleText) &&
+    /(masivo|general|global|todos?\s+los\s+tickets|todo\s+los\s+tickets|todos?\s+los\s+casos|todo\s+los\s+casos)/.test(
+      simpleText
+    )
+  );
 }
 
 function toRoom(payload) {
@@ -435,12 +466,26 @@ function inferChatTicketPriority(text = '') {
   return 'medium';
 }
 
+function looksLikeIssueNarrative(text = '') {
+  const simple = normalize(text);
+  if (!simple || simple.length < 20) return false;
+  const hasIssueSignal =
+    /(no puedo|no funciona|fall[ao]|error|se cayo|caid[ao]|urgente|problema|incidente|bloqueado|no abre|lento|intermitente|no carga|sin acceso)/.test(
+      simple
+    );
+  if (!hasIssueSignal) return false;
+  return simple.split(/\s+/).filter(Boolean).length >= 6;
+}
+
 async function createTicketFromChat(payload, reason, io) {
   const validUserId = normalizeValidUserId(payload.userId);
   const watchers = validUserId ? [validUserId] : [];
+  const creator = validUserId ? await User.findById(validUserId).select('name email').lean() : null;
+  const company = creator?.name || 'N/D';
   const ticket = new Ticket({
     title: `Chatbot: ${reason.slice(0, 40) || 'Nueva consulta'}`,
     description: `${reason}\n\nConsulta del usuario:\n${payload.text}`,
+    company,
     createdBy: validUserId || null,
     priority: inferChatTicketPriority(`${reason}\n${payload.text}`),
     watchers
@@ -472,9 +517,143 @@ async function createTicketFromChat(payload, reason, io) {
   return ticket;
 }
 
+async function resolveActor(payload) {
+  const validUserId = normalizeValidUserId(payload.userId);
+  if (!validUserId) return null;
+  const user = await User.findById(validUserId).select('name email role').lean();
+  return user || null;
+}
+
+async function deleteTicketFromChat(ticketId) {
+  const ticket = await Ticket.findById(ticketId);
+  if (!ticket) return { ok: false, message: 'No encontre un ticket con ese ID.' };
+
+  await Notification.deleteMany({ ticket: ticket._id });
+  await Survey.deleteMany({ ticket: ticket._id });
+  await Ticket.deleteOne({ _id: ticket._id });
+  return { ok: true, message: `Ticket ${ticketId} eliminado correctamente.` };
+}
+
+async function buildReportSummaryFromChat(range = 'weekly') {
+  const now = new Date();
+  const start = new Date(now);
+  if (range === 'monthly') start.setMonth(start.getMonth() - 1);
+  else start.setDate(start.getDate() - 7);
+  start.setHours(0, 0, 0, 0);
+
+  const tickets = await Ticket.find({
+    createdAt: { $gte: start, $lte: now }
+  }).select('status priority').lean();
+
+  const byStatus = {};
+  const byPriority = {};
+  tickets.forEach((ticket) => {
+    byStatus[ticket.status] = (byStatus[ticket.status] || 0) + 1;
+    byPriority[ticket.priority] = (byPriority[ticket.priority] || 0) + 1;
+  });
+
+  const label = range === 'monthly' ? 'mensual' : 'semanal';
+  const statusLine = Object.entries(byStatus).map(([k, v]) => `${k}: ${v}`).join(', ') || 'sin datos';
+  const priorityLine = Object.entries(byPriority).map(([k, v]) => `${k}: ${v}`).join(', ') || 'sin datos';
+
+  return [
+    `Resumen ${label} generado.`,
+    `Total tickets: ${tickets.length}.`,
+    `Estados: ${statusLine}.`,
+    `Prioridades: ${priorityLine}.`,
+    `Si deseas el PDF, usa: /api/reports/tickets?range=${range}.`
+  ].join('\n');
+}
+
+async function broadcastInternalMessageFromChat(actor, messageText, io) {
+  const trimmed = String(messageText || '').trim();
+  if (!trimmed) {
+    return { ok: false, message: 'Indica el mensaje a enviar. Ejemplo: mensaje a todos los tickets: <texto>' };
+  }
+
+  const tickets = await Ticket.find({
+    status: { $in: ['open', 'in_progress', 'awaiting_client', 'resolved'] }
+  });
+
+  if (!tickets.length) {
+    return { ok: true, message: 'No hay tickets activos para notificar.' };
+  }
+
+  let updated = 0;
+  for (const ticket of tickets) {
+    ticket.messages.push({
+      authorId: actor._id,
+      authorRole: actor.role,
+      text: trimmed,
+      internal: true
+    });
+    ticket.statusHistory.push({
+      status: ticket.status,
+      changedBy: actor._id,
+      note: 'Mensaje interno masivo enviado por administrador'
+    });
+    await ticket.save();
+    updated += 1;
+  }
+
+  const recipients = await User.find({ role: { $in: ['agent', 'programmer', 'admin'] } }, '_id').lean();
+  if (io) {
+    recipients.forEach((user) => {
+      io.to(String(user._id)).emit('notification', {
+        ticket: null,
+        message: 'Se publico un mensaje interno masivo en tickets activos.',
+        type: 'ticket_updated'
+      });
+    });
+  }
+
+  return { ok: true, message: `Mensaje interno enviado a ${updated} tickets activos.` };
+}
+
 async function ruleBasedResponse(payload) {
   const text = payload.text || '';
   const simple = normalize(text);
+  const actor = await resolveActor(payload);
+
+  // Admin actions must run first to avoid accidental ticket creation
+  // when the message includes words like "error" or "problema".
+  if (isAdminActionRequested(simple)) {
+    if (!actor || actor.role !== 'admin') {
+      return {
+        handled: true,
+        reply: 'Estas acciones solo las puede ejecutar un usuario administrador.'
+      };
+    }
+
+    if (wantsMonthlyReport(simple)) {
+      const report = await buildReportSummaryFromChat('monthly');
+      return { handled: true, reply: report };
+    }
+
+    if (wantsWeeklyReport(simple)) {
+      const report = await buildReportSummaryFromChat('weekly');
+      return { handled: true, reply: report };
+    }
+
+    if (wantsDeleteTicket(simple)) {
+      const ticketId = isLikelyTicketId(text);
+      if (!ticketId) {
+        return { handled: true, reply: 'Comparte el ID del ticket (24 caracteres) para eliminarlo.' };
+      }
+      const result = await deleteTicketFromChat(ticketId);
+      return { handled: true, reply: result.message };
+    }
+
+    if (wantsBroadcastMessage(simple)) {
+      const messageText = extractAfterCommand(
+        text,
+        /(mensaje a todos los tickets|mensaje masivo|aviso general tickets|manda un mensaje.*tickets|enviar mensaje.*tickets)\s*[:\-]?\s*/i
+      );
+      const fallbackMessageText = messageText || String(text).replace(/^.*?(mensaje|aviso|comunicado)\s*/i, '').trim();
+      const result = await broadcastInternalMessageFromChat(actor, fallbackMessageText, payload.io);
+      return { handled: true, reply: result.message };
+    }
+  }
 
   if (!text.trim()) {
     return {
@@ -557,7 +736,7 @@ async function ruleBasedResponse(payload) {
     };
   }
 
-  if (/estado|seguimiento|avance/.test(simple)) {
+  if (/estado|seguimiento|avance|como le fue|que paso con/.test(simple)) {
     const ticketId = isLikelyTicketId(text);
     if (!ticketId) {
       return {
@@ -588,6 +767,16 @@ async function ruleBasedResponse(payload) {
         'Entiendo que el incidente es urgente. Estoy generando un ticket con tu mensaje para que un asesor lo revise de inmediato.',
       createTicket: true,
       ticketReason: 'Incidente reportado como urgente'
+    };
+  }
+
+  if (looksLikeIssueNarrative(text)) {
+    return {
+      handled: true,
+      reply:
+        'Gracias por el detalle. Ya cree tu ticket automaticamente para que el equipo lo atienda.',
+      createTicket: true,
+      ticketReason: 'Incidente reportado por cliente desde chatbot'
     };
   }
 
@@ -675,8 +864,9 @@ async function callAssistant(messages) {
 
 // payload: { userId, text, room }
 async function handleChatMessageCore(payload, io, emit = false) {
+  const payloadWithIo = { ...payload, io };
   const applyRuleResult = async () => {
-    const ruleResult = await ruleBasedResponse(payload);
+    const ruleResult = await ruleBasedResponse(payloadWithIo);
     if (!ruleResult.handled) return null;
 
     let finalReply = ruleResult.reply;
