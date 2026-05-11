@@ -7,6 +7,8 @@ const Survey = require('../models/Survey');
 const auth = require('../middleware/auth');
 
 const router = express.Router();
+const VALID_PRIORITIES = ['low', 'medium', 'high'];
+const VALID_STATUSES = ['open', 'in_progress', 'awaiting_client', 'resolved'];
 
 const BASE_POPULATE = [
   { path: 'createdBy', select: 'name email role' },
@@ -35,6 +37,16 @@ function normalizeAssigneeId(value) {
   if (value === null || value === undefined || value === '') return null;
   if (!mongoose.Types.ObjectId.isValid(value)) return undefined;
   return String(value);
+}
+
+function escapeRegExp(value = '') {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function normalizePriority(value = 'medium') {
+  const normalized = String(value || 'medium').trim().toLowerCase();
+  if (normalized === 'critical') return 'high';
+  return VALID_PRIORITIES.includes(normalized) ? normalized : null;
 }
 
 function ensureWatcher(ticket, userId) {
@@ -79,7 +91,18 @@ router.use(auth());
 // Create ticket (client)
 router.post('/', ensureRole(['client', 'agent', 'admin']), async (req, res) => {
   try {
-    const { title, description, company, priority = 'medium' } = req.body;
+    const title = String(req.body.title || '').trim();
+    const description = String(req.body.description || '').trim();
+    const company = String(req.body.company || '').trim();
+    const priority = normalizePriority(req.body.priority);
+
+    if (!title || !description) {
+      return res.status(400).json({ ok: false, error: 'Titulo y descripcion son obligatorios' });
+    }
+    if (!priority) {
+      return res.status(400).json({ ok: false, error: 'Prioridad invalida' });
+    }
+
     const ticket = await Ticket.create({
       title,
       description,
@@ -153,7 +176,10 @@ router.get('/', async (req, res) => {
       }
     }
 
-    if (req.query.priority) andConditions.push({ priority: req.query.priority });
+    if (req.query.priority) {
+      const priority = normalizePriority(req.query.priority);
+      if (priority) andConditions.push({ priority });
+    }
     if (req.query.company) andConditions.push({ company: req.query.company });
 
     if (req.query.clientId && mongoose.Types.ObjectId.isValid(req.query.clientId)) {
@@ -173,8 +199,24 @@ router.get('/', async (req, res) => {
     }
 
     if (req.query.search) {
-      const regex = new RegExp(req.query.search, 'i');
-      andConditions.push({ $or: [{ title: regex }, { description: regex }] });
+      const regex = new RegExp(escapeRegExp(req.query.search), 'i');
+      const matchingUsers = await User.find(
+        { $or: [{ name: regex }, { email: regex }] },
+        '_id'
+      )
+        .limit(80)
+        .lean();
+      const userIds = matchingUsers.map((item) => item._id);
+      andConditions.push({
+        $or: [
+          { title: regex },
+          { description: regex },
+          { company: regex },
+          { createdBy: { $in: userIds } },
+          { assignedAgent: { $in: userIds } },
+          { assignedProgrammer: { $in: userIds } }
+        ]
+      });
     }
 
     let filter = {};
@@ -395,7 +437,7 @@ router.patch('/:id/assign', ensureRole(['agent', 'admin']), async (req, res) => 
   }
 });
 
-router.patch('/:id/status', ensureRole(['agent']), async (req, res) => {
+router.patch('/:id/status', ensureRole(['agent', 'admin']), async (req, res) => {
   try {
     const { status, priority, note } = req.body;
     const ticket = await Ticket.findById(req.params.id);
@@ -403,22 +445,29 @@ router.patch('/:id/status', ensureRole(['agent']), async (req, res) => {
       return res.status(404).json({ ok: false, error: 'Ticket no accesible' });
     }
 
-    if (!ticket.assignedAgent) {
+    ensureWatcher(ticket, req.user.id);
+
+    if (req.user.role === 'agent' && !ticket.assignedAgent) {
       ticket.assignedAgent = req.user.id;
-    } else if (String(ticket.assignedAgent) !== String(req.user.id)) {
+    } else if (req.user.role === 'agent' && String(ticket.assignedAgent) !== String(req.user.id)) {
       return res.status(403).json({ ok: false, error: 'Ticket asignado a otro asesor' });
     }
 
     const updates = [];
 
     if (priority && priority !== ticket.priority) {
-      ticket.priority = priority;
-      updates.push(`Prioridad actualizada a ${priority}`);
+      const normalizedPriority = normalizePriority(priority);
+      if (!normalizedPriority) {
+        return res.status(400).json({ ok: false, error: 'Prioridad invalida' });
+      }
+      if (normalizedPriority !== ticket.priority) {
+        ticket.priority = normalizedPriority;
+        updates.push(`Prioridad actualizada a ${normalizedPriority}`);
+      }
     }
 
     if (status && status !== ticket.status) {
-      const allowedStatus = ['open', 'in_progress', 'awaiting_client', 'resolved'];
-      if (!allowedStatus.includes(status)) {
+      if (!VALID_STATUSES.includes(status)) {
         return res.status(400).json({ ok: false, error: 'Estado no permitido' });
       }
 

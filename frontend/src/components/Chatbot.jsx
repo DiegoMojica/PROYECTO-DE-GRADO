@@ -3,7 +3,7 @@ import { socket, ensureSocketConnection, joinRoom } from '../services/socket';
 
 const QUICK_PROMPTS = [
   { label: 'Como crear un ticket', text: 'Como puedo crear un ticket nuevo?' },
-  { label: 'Estado de mi ticket', text: 'Cual es el estado de mi ticket 000000000000000000000000?' },
+  { label: 'Estado de mi ticket', text: 'Quiero consultar el estado de mi ticket' },
   { label: 'Requisitos de visita', text: 'Necesito programar una visita tecnica' },
   { label: 'Soporte urgente', text: 'Tengo un problema urgente, no puedo acceder al sistema' }
 ];
@@ -98,10 +98,8 @@ export default function Chatbot({ userId }) {
   return (
     <div className="chatbot-card">
       <div className="chatbot-header">
-        <h2>Chatbot IA</h2>
-        <p>
-          Enter para enviar. Escape limpia el borrador. Si la IA no esta disponible recibiras una guia paso a paso y podremos crear un ticket por ti.
-        </p>
+        <h2>Chatbot de soporte</h2>
+        <p>Recibe orientacion, consulta estados y escala casos a soporte humano cuando sea necesario.</p>
       </div>
       <div className="chatbot-body">
         <div className="chatbot-prompts">
@@ -125,7 +123,7 @@ export default function Chatbot({ userId }) {
               >
                 {msg.author === 'bot' && msg.source && (
                   <div className="chatbot-source">
-                    {msg.source === 'ai' ? 'IA local' : 'Reglas'}
+                    {msg.source === 'ai' ? 'Asistente' : 'Reglas'}
                   </div>
                 )}
                 {msg.text}

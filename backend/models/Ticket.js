@@ -1,5 +1,7 @@
 const mongoose = require('mongoose');
 
+const PRIORITY_VALUES = ['low', 'medium', 'high'];
+
 const MessageSchema = new mongoose.Schema(
   {
     authorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
@@ -32,7 +34,7 @@ const TicketSchema = new mongoose.Schema({
     type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     default: []
   },
-  priority: { type: String, enum: ['low', 'medium', 'high', 'critical'], default: 'medium' },
+  priority: { type: String, enum: PRIORITY_VALUES, default: 'medium' },
   status: { type: String, enum: ['open', 'in_progress', 'awaiting_client', 'resolved', 'closed'], default: 'open' },
   statusHistory: [StatusHistorySchema],
   messages: [MessageSchema],
@@ -47,6 +49,13 @@ const TicketSchema = new mongoose.Schema({
   resolvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   closedAt: { type: Date }
 }, { timestamps: true });
+
+TicketSchema.pre('validate', function normalizeLegacyPriority(next) {
+  if (this.priority === 'critical') {
+    this.priority = 'high';
+  }
+  next();
+});
 
 TicketSchema.pre('save', function updateActivity(next) {
   this.lastActivityAt = new Date();

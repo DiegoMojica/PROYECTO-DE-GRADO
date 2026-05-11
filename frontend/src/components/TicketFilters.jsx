@@ -13,8 +13,7 @@ const PRIORITY_OPTIONS = [
   { value: '', label: 'Todas las prioridades' },
   { value: 'low', label: 'Baja' },
   { value: 'medium', label: 'Media' },
-  { value: 'high', label: 'Alta' },
-  { value: 'critical', label: 'Critica' }
+  { value: 'high', label: 'Alta' }
 ];
 
 export default function TicketFilters({ filters, onChange }) {

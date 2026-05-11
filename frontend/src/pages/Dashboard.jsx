@@ -12,6 +12,13 @@ import NavBar from '../components/NavBar';
 import api from '../services/api';
 import { ensureSocketConnection, socket } from '../services/socket';
 
+const ROLE_LABELS = {
+  admin: 'Administrador',
+  client: 'Cliente',
+  agent: 'Asesor tecnico',
+  programmer: 'Programador'
+};
+
 function groupTicketsByStatus(items) {
   return items.reduce((acc, ticket) => {
     const key = ticket.status || 'open';
@@ -173,6 +180,7 @@ export default function Dashboard({ user, onLogout }) {
         if (res.data.ok) {
           setTickets((prev) => [res.data.ticket, ...prev]);
           await refreshTickets();
+          await refreshDashboard();
           setSelectedTicket(res.data.ticket);
         }
       } catch (err) {
@@ -182,7 +190,7 @@ export default function Dashboard({ user, onLogout }) {
         setLoadingAction(false);
       }
     },
-    [refreshTickets]
+    [refreshDashboard, refreshTickets]
   );
 
   const sendMessage = useCallback(async (ticketId, body) => {
@@ -192,6 +200,7 @@ export default function Dashboard({ user, onLogout }) {
       if (res.data.ok) {
         setTickets((prev) => prev.map((ticket) => (ticket._id === ticketId ? res.data.ticket : ticket)));
         setSelectedTicket(res.data.ticket);
+        refreshDashboard();
       }
     } catch (err) {
       console.error(err);
@@ -199,7 +208,7 @@ export default function Dashboard({ user, onLogout }) {
     } finally {
       setLoadingAction(false);
     }
-  }, []);
+  }, [refreshDashboard]);
 
   const changeStatus = useCallback(async (ticketId, payload) => {
     try {
@@ -207,12 +216,13 @@ export default function Dashboard({ user, onLogout }) {
       if (res.data.ok) {
         setTickets((prev) => prev.map((ticket) => (ticket._id === ticketId ? res.data.ticket : ticket)));
         setSelectedTicket(res.data.ticket);
+        refreshDashboard();
       }
     } catch (err) {
       console.error(err);
       alert(err.response?.data?.error || 'No se pudo actualizar el estado');
     }
-  }, []);
+  }, [refreshDashboard]);
 
   const assignTicket = useCallback(async (ticketId, assignment) => {
     try {
@@ -220,12 +230,13 @@ export default function Dashboard({ user, onLogout }) {
       if (res.data.ok) {
         setTickets((prev) => prev.map((ticket) => (ticket._id === ticketId ? res.data.ticket : ticket)));
         setSelectedTicket(res.data.ticket);
+        refreshDashboard();
       }
     } catch (err) {
       console.error(err);
       alert(err.response?.data?.error || 'No se pudo asignar el ticket');
     }
-  }, []);
+  }, [refreshDashboard]);
 
   const markProgrammerReady = useCallback(async (ticketId) => {
     try {
@@ -233,12 +244,13 @@ export default function Dashboard({ user, onLogout }) {
       if (res.data.ok) {
         setTickets((prev) => prev.map((ticket) => (ticket._id === ticketId ? res.data.ticket : ticket)));
         setSelectedTicket(res.data.ticket);
+        refreshDashboard();
       }
     } catch (err) {
       console.error(err);
       alert(err.response?.data?.error || 'No se pudo marcar el ticket como listo');
     }
-  }, []);
+  }, [refreshDashboard]);
 
   const handleFiltersChange = useCallback(
     (nextFilters) => {
@@ -510,7 +522,7 @@ export default function Dashboard({ user, onLogout }) {
         { label: 'Tickets totales', value: summary.totalTickets, trend: 'Sistema' },
         { label: 'Abiertos', value: statusMap.open || 0, trend: 'Pendientes' },
         { label: 'En progreso', value: statusMap.in_progress || 0, trend: 'Asignados' },
-        { label: 'Resueltos', value: statusMap.resolved || 0, trend: 'Ultimos 30 dias' }
+        { label: 'Resueltos', value: (statusMap.resolved || 0) + (statusMap.closed || 0), trend: 'Incluye cerrados' }
       ];
       if (summary.avgResolutionHours) {
         baseCards.push({
@@ -538,7 +550,7 @@ export default function Dashboard({ user, onLogout }) {
       { label: 'Tus tickets', value: tickets.length, trend: 'Totales' },
       { label: 'Abiertos', value: statusMap.open || 0, trend: 'Sin resolver' },
       { label: 'En progreso', value: statusMap.in_progress || 0, trend: 'Atendiendose' },
-      { label: 'Resueltos', value: statusMap.resolved || 0, trend: 'Cerrados' }
+      { label: 'Resueltos', value: (statusMap.resolved || 0) + (statusMap.closed || 0), trend: 'Incluye cerrados' }
     ];
   }, [tickets, summary]);
 
@@ -550,7 +562,7 @@ export default function Dashboard({ user, onLogout }) {
       <header className="dashboard-topbar">
         <div>
           <h1>Hola, {user.name || user.email}</h1>
-          <div className="subtitle">Rol: {user.role}. Gestiona tus operaciones de soporte.</div>
+          <div className="subtitle">Rol: {ROLE_LABELS[user.role] || user.role}. Gestiona tus operaciones de soporte.</div>
         </div>
         <div className="dashboard-actions">
           <NotificationBell
@@ -678,6 +690,48 @@ export default function Dashboard({ user, onLogout }) {
                 {!usersByRole.client.length && (
                   <tr>
                     <td colSpan="3" style={{ textAlign: 'center', opacity: 0.6 }}>Sin clientes registrados.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {user.role === 'programmer' && (
+        <section className="ticket-table">
+          <header>
+            <h2>Clientes con desarrollo</h2>
+            <span>{programmerClientOptions.length} clientes</span>
+          </header>
+          <div className="table-scroll compact-table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Cliente</th>
+                  <th>Correo</th>
+                  <th>Tickets asignados</th>
+                </tr>
+              </thead>
+              <tbody>
+                {programmerClientOptions.map((client) => {
+                  const assignedCount = tickets.filter((ticket) => {
+                    const clientId = ticket.createdBy?._id || ticket.createdBy?.id || ticket.createdBy;
+                    return String(clientId || '') === String(client.id);
+                  }).length;
+                  return (
+                    <tr key={client.id}>
+                      <td>{client.name}</td>
+                      <td>{client.email || 'N/D'}</td>
+                      <td>{assignedCount}</td>
+                    </tr>
+                  );
+                })}
+                {!programmerClientOptions.length && (
+                  <tr>
+                    <td colSpan="3" style={{ textAlign: 'center', opacity: 0.6 }}>
+                      Sin tickets asignados a programacion.
+                    </td>
                   </tr>
                 )}
               </tbody>

@@ -4,8 +4,8 @@ import axios from 'axios';
 const API_BASE = process.env.REACT_APP_BACKEND_URL || 'http://localhost:4000';
 
 export default function Login({ onLogin }) {
-  const [email, setEmail] = useState('test@example.com');
-  const [password, setPassword] = useState('password123');
+  const [email, setEmail] = useState('cliente@demo.com');
+  const [password, setPassword] = useState('demo123');
   const [name, setName] = useState('');
   const [isRegister, setIsRegister] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -70,18 +70,17 @@ export default function Login({ onLogin }) {
       <section className="auth-hero">
         <div className="auth-hero-content">
           <span className="auth-hero-highlight">
-            <span>Nuevo release</span>
+            <span>Soporte tecnico</span>
             <span>v1.0.0</span>
           </span>
-          <h1>Gestiona soporte con estilo profesional</h1>
+          <h1>Plataforma web de soporte tecnico</h1>
           <p>
-            Centraliza tickets, integra un chatbot inteligente y ofrece respuestas rapidas a tus clientes.
-            Disenado para equipos modernos que valoran la experiencia de usuario.
+            Centraliza tickets, roles, chatbot, seguimiento, encuestas y reportes para equipos de soporte.
           </p>
         </div>
         <div className="auth-hero-content">
           <div className="auth-hero-highlight" style={{ background: 'rgba(15,23,42,0.72)' }}>
-            Atajos: Enter = enviar, ESC = cambiar modo
+            Admin, cliente, asesor y programador
           </div>
         </div>
       </section>
@@ -139,9 +138,7 @@ export default function Login({ onLogin }) {
             {isRegister ? 'Ya tengo una cuenta. Ingresar' : 'Crear una cuenta nueva'}
           </button>
 
-          <div className="auth-hint">
-            Enter para enviar. Presiona ESC para alternar entre crear cuenta e iniciar sesion.
-          </div>
+          <div className="auth-hint">Usa las cuentas demo o registra una cuenta de cliente.</div>
         </div>
       </section>
     </div>

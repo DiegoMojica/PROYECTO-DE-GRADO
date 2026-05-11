@@ -10,9 +10,23 @@ const STATUS_AGENT_OPTIONS = [
 const PRIORITY_OPTIONS = [
   { value: 'low', label: 'Baja' },
   { value: 'medium', label: 'Media' },
-  { value: 'high', label: 'Alta' },
-  { value: 'critical', label: 'Critica' }
+  { value: 'high', label: 'Alta' }
 ];
+
+const STATUS_LABELS = {
+  open: 'Abierto',
+  in_progress: 'En proceso',
+  awaiting_client: 'Esperando cliente',
+  resolved: 'Resuelto',
+  closed: 'Cerrado'
+};
+
+const PRIORITY_LABELS = {
+  low: 'Baja',
+  medium: 'Media',
+  high: 'Alta',
+  critical: 'Alta'
+};
 
 const SURVEY_QUESTIONS = [
   { key: 'q1', label: '1. La atencion recibida fue rapida?' },
@@ -73,11 +87,21 @@ export default function TicketDetail({
   const canSendMessage = ['client', 'agent', 'programmer'].includes(currentUser.role);
   const canUseInternal = currentUser.role === 'agent';
   const canAssign = ['agent', 'admin'].includes(currentUser.role);
-  const canChangeStatus = currentUser.role === 'agent';
-  const canChangePriority = currentUser.role === 'agent';
-  const canMarkReady = currentUser.role === 'programmer' && !ticket.programmerReady && ticket.status !== 'closed';
+  const assignedProgrammerId = ticket.assignedProgrammer?._id || ticket.assignedProgrammer?.id;
+  const createdById = ticket.createdBy?._id || ticket.createdBy?.id || ticket.createdBy;
+  const canChangeStatus = ['agent', 'admin'].includes(currentUser.role);
+  const canChangePriority = ['agent', 'admin'].includes(currentUser.role);
+  const canMarkReady =
+    currentUser.role === 'programmer' &&
+    String(assignedProgrammerId || '') === String(currentUser.id || currentUser._id || '') &&
+    !ticket.programmerReady &&
+    ticket.status !== 'closed';
   const hasStatusChange = status !== ticket.status || priority !== ticket.priority;
-  const canSubmitSatisfaction = currentUser.role === 'client' && ticket.status === 'resolved' && !ticket.survey;
+  const canSubmitSatisfaction =
+    currentUser.role === 'client' &&
+    String(createdById || '') === String(currentUser.id || currentUser._id || '') &&
+    ticket.status === 'resolved' &&
+    !ticket.survey;
   const hasSatisfaction =
     (typeof ticket.satisfactionRating === 'number' && ticket.satisfactionRating > 0) || Boolean(ticket.survey);
   const agentAssignedId = ticket.assignedAgent?._id || ticket.assignedAgent?.id;
@@ -88,7 +112,7 @@ export default function TicketDetail({
       agentAssignedId &&
       String(agentAssignedId) === String(currentUser.id));
   const statusOptions = useMemo(() => {
-    if (currentUser.role === 'agent') return STATUS_AGENT_OPTIONS;
+    if (['agent', 'admin'].includes(currentUser.role)) return STATUS_AGENT_OPTIONS;
     return [{ value: ticket.status, label: ticket.status }];
   }, [currentUser.role, ticket.status]);
 
@@ -151,8 +175,8 @@ export default function TicketDetail({
         </div>
         <div className="detail-meta">
           <span className="tag">{ticket.company || 'Sin empresa'}</span>
-          <span className="tag">{ticket.priority}</span>
-          <span className="tag">{ticket.status}</span>
+          <span className="tag">{PRIORITY_LABELS[ticket.priority] || ticket.priority}</span>
+          <span className="tag">{STATUS_LABELS[ticket.status] || ticket.status}</span>
           {ticket.assignedAgent?.name && <span className="tag tag-agent">Asesor: {ticket.assignedAgent.name}</span>}
           {ticket.assignedProgrammer?.name && (
             <span className="tag tag-programmer">Prog: {ticket.assignedProgrammer.name}</span>

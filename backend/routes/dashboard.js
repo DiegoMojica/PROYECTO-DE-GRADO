@@ -1,4 +1,5 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const Ticket = require('../models/Ticket');
 const User = require('../models/User');
 const auth = require('../middleware/auth');
@@ -22,12 +23,18 @@ function mergeMatch(baseFilter = {}, extraFilter = {}) {
   return { $and: [baseFilter, extraFilter] };
 }
 
+function toObjectId(value) {
+  if (!mongoose.Types.ObjectId.isValid(value)) return null;
+  return new mongoose.Types.ObjectId(value);
+}
+
 router.get('/summary', ensureRole(['admin', 'agent']), async (req, res) => {
   try {
+    const userObjectId = toObjectId(req.user.id);
     const roleFilter =
-      req.user.role === 'agent'
+      req.user.role === 'agent' && userObjectId
         ? {
-            $or: [{ assignedAgent: req.user.id }, { assignedAgent: null }, { watchers: req.user.id }]
+            $or: [{ assignedAgent: userObjectId }, { assignedAgent: null }, { watchers: userObjectId }]
           }
         : {};
 

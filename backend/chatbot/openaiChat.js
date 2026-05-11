@@ -14,6 +14,7 @@ require('dotenv').config();
 
 const OPENAI_KEY = process.env.OPENAI_API_KEY || '';
 const HF_KEY = process.env.HF_API_KEY || '';
+const CHATBOT_AI_ENABLED = String(process.env.CHATBOT_AI_ENABLED || 'false').toLowerCase() === 'true';
 const HF_BASE_URL = process.env.HF_BASE_URL || 'https://router.huggingface.co/v1/chat/completions';
 const HF_MODEL = process.env.HF_MODEL || 'Qwen/Qwen2.5-7B-Instruct-1M';
 const HF_MODEL_FALLBACKS = (process.env.HF_MODEL_FALLBACKS || '')
@@ -425,6 +426,15 @@ async function fetchTicketStatus(ticketId, userId) {
   };
 }
 
+function inferChatTicketPriority(text = '') {
+  const simple = normalize(text);
+  if (/urgente|critico|critica|caido|se cayo|caida|no puedo acceder|error 500|seguridad|acceso no autorizado/.test(simple)) {
+    return 'high';
+  }
+  if (/baja|duda|consulta/.test(simple)) return 'low';
+  return 'medium';
+}
+
 async function createTicketFromChat(payload, reason, io) {
   const validUserId = normalizeValidUserId(payload.userId);
   const watchers = validUserId ? [validUserId] : [];
@@ -432,7 +442,7 @@ async function createTicketFromChat(payload, reason, io) {
     title: `Chatbot: ${reason.slice(0, 40) || 'Nueva consulta'}`,
     description: `${reason}\n\nConsulta del usuario:\n${payload.text}`,
     createdBy: validUserId || null,
-    priority: 'medium',
+    priority: inferChatTicketPriority(`${reason}\n${payload.text}`),
     watchers
   });
   await ticket.save();
@@ -448,13 +458,15 @@ async function createTicketFromChat(payload, reason, io) {
 
   if (notificationDocs.length) {
     await Notification.insertMany(notificationDocs);
-    notificationDocs.forEach((notif) => {
-      io.to(String(notif.user)).emit('notification', {
-        ticket: notif.ticket,
-        message: notif.message,
-        type: notif.type
+    if (io) {
+      notificationDocs.forEach((notif) => {
+        io.to(String(notif.user)).emit('notification', {
+          ticket: notif.ticket,
+          message: notif.message,
+          type: notif.type
+        });
       });
-    });
+    }
   }
 
   return ticket;
@@ -647,6 +659,8 @@ async function ruleBasedResponse(payload) {
 }
 
 async function callAssistant(messages) {
+  if (!CHATBOT_AI_ENABLED) return null;
+
   const openaiReply = await callOpenAI(messages);
   if (openaiReply) return openaiReply;
 
@@ -661,9 +675,6 @@ async function callAssistant(messages) {
 
 // payload: { userId, text, room }
 async function handleChatMessageCore(payload, io, emit = false) {
-  const simpleText = normalize(payload.text || '');
-  const prioritizeRules = shouldPrioritizeRules(simpleText);
-
   const applyRuleResult = async () => {
     const ruleResult = await ruleBasedResponse(payload);
     if (!ruleResult.handled) return null;
@@ -684,26 +695,6 @@ async function handleChatMessageCore(payload, io, emit = false) {
     };
   };
 
-  if (prioritizeRules) {
-    const strictRuleResult = await applyRuleResult();
-    if (strictRuleResult) {
-      if (emit) {
-        emitReply(io, payload, strictRuleResult.reply, {
-          source: strictRuleResult.source,
-          createdTicketId: strictRuleResult.createdTicketId
-        });
-      }
-      return strictRuleResult;
-    }
-  }
-
-  const messages = buildAssistantMessages(payload.text || '');
-  const aiReply = await callAssistant(messages);
-  if (aiReply && !isWeakAssistantReply(aiReply, payload.text)) {
-    if (emit) emitReply(io, payload, aiReply, { source: 'ai' });
-    return { ok: true, source: 'ai', reply: aiReply };
-  }
-
   const ruleResult = await applyRuleResult();
   if (ruleResult) {
     if (emit) {
@@ -713,6 +704,13 @@ async function handleChatMessageCore(payload, io, emit = false) {
       });
     }
     return ruleResult;
+  }
+
+  const messages = buildAssistantMessages(payload.text || '');
+  const aiReply = await callAssistant(messages);
+  if (aiReply && !isWeakAssistantReply(aiReply, payload.text)) {
+    if (emit) emitReply(io, payload, aiReply, { source: 'ai' });
+    return { ok: true, source: 'ai', reply: aiReply };
   }
 
   const fallbackReply = defaultGuidedReply();

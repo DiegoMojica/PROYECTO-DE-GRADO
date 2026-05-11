@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 
 const NAV_ITEMS = [
   { id: 'dashboard', label: 'Dashboard', target: 'section-dashboard' },
@@ -7,6 +7,13 @@ const NAV_ITEMS = [
 ];
 
 export default function NavBar({ active, onNavigate, onLogout, user }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  const goToSection = (target, id) => {
+    onNavigate(target, id);
+    setMenuOpen(false);
+  };
+
   return (
     <nav className="main-navbar">
       <div className="nav-brand">
@@ -16,13 +23,24 @@ export default function NavBar({ active, onNavigate, onLogout, user }) {
           {user?.name && <span>{user.name}</span>}
         </div>
       </div>
-      <ul className="nav-links">
+      <button
+        type="button"
+        className="nav-toggle"
+        aria-expanded={menuOpen}
+        aria-label="Abrir menu"
+        onClick={() => setMenuOpen((value) => !value)}
+      >
+        <span />
+        <span />
+        <span />
+      </button>
+      <ul className={`nav-links ${menuOpen ? 'open' : ''}`}>
         {NAV_ITEMS.map((item) => (
           <li key={item.id}>
             <button
               type="button"
               className={active === item.id ? 'active' : ''}
-              onClick={() => onNavigate(item.target, item.id)}
+              onClick={() => goToSection(item.target, item.id)}
             >
               {item.label}
             </button>

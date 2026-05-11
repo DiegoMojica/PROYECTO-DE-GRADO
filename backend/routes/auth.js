@@ -6,6 +6,7 @@ require('dotenv').config();
 
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'verysecret';
+const ROLE_VALUES = ['client', 'agent', 'programmer', 'admin'];
 
 function requireAdmin(req, res, next) {
   if (req.user?.role !== 'admin') {
@@ -14,10 +15,30 @@ function requireAdmin(req, res, next) {
   return next();
 }
 
+function normalizeEmail(email = '') {
+  return String(email).trim().toLowerCase();
+}
+
+function isValidRole(role) {
+  return ROLE_VALUES.includes(role);
+}
+
+function publicUser(user) {
+  return {
+    id: user._id,
+    name: user.name,
+    email: user.email,
+    role: user.role
+  };
+}
+
 // Register (simple)
 router.post('/register', async (req, res) => {
   try {
-    const { name, email, password } = req.body;
+    const name = String(req.body.name || '').trim();
+    const email = normalizeEmail(req.body.email);
+    const { password } = req.body;
+
     if (!name || !email || !password) {
       return res.status(400).json({ ok: false, error: 'Nombre, correo y contrasena son obligatorios' });
     }
@@ -41,7 +62,8 @@ router.post('/register', async (req, res) => {
 // Login
 router.post('/login', async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const email = normalizeEmail(req.body.email);
+    const { password } = req.body;
     const user = await User.findOne({ email });
     if (!user) return res.status(401).json({ ok: false, error: 'Usuario no existe' });
     const valid = await user.validatePassword(password);
@@ -80,9 +102,14 @@ router.get('/users', auth(), async (req, res) => {
 
 router.post('/admin/users', auth(), requireAdmin, async (req, res) => {
   try {
-    const { name, email, password, role = 'client' } = req.body;
+    const name = String(req.body.name || '').trim();
+    const email = normalizeEmail(req.body.email);
+    const { password, role = 'client' } = req.body;
     if (!name || !email || !password) {
       return res.status(400).json({ ok: false, error: 'Nombre, correo y contrasena son obligatorios' });
+    }
+    if (!isValidRole(role)) {
+      return res.status(400).json({ ok: false, error: 'Rol invalido' });
     }
     if (password.length < 6) {
       return res.status(400).json({ ok: false, error: 'La contrasena debe tener al menos 6 caracteres' });
@@ -92,7 +119,7 @@ router.post('/admin/users', auth(), requireAdmin, async (req, res) => {
     const user = new User({ name, email, role });
     await user.setPassword(password);
     await user.save();
-    res.json({ ok: true, user: { id: user._id, name: user.name, email: user.email, role: user.role } });
+    res.status(201).json({ ok: true, user: publicUser(user) });
   } catch (err) {
     console.error(err);
     res.status(400).json({ ok: false, error: 'No se pudo crear usuario' });
@@ -105,17 +132,23 @@ router.put('/admin/users/:id', auth(), requireAdmin, async (req, res) => {
     const user = await User.findById(req.params.id);
     if (!user) return res.status(404).json({ ok: false, error: 'Usuario no encontrado' });
     if (String(user._id) === String(req.user.id) && role && role !== 'admin') {
-      return res.status(400).json({ ok: false, error: 'No puedes cambiar tu proprio rol' });
+      return res.status(400).json({ ok: false, error: 'No puedes cambiar tu propio rol' });
     }
-    if (email && email !== user.email) {
-      const emailTaken = await User.findOne({ email });
+    const nextEmail = email ? normalizeEmail(email) : '';
+    if (nextEmail && nextEmail !== user.email) {
+      const emailTaken = await User.findOne({ email: nextEmail });
       if (emailTaken && String(emailTaken._id) !== String(user._id)) {
         return res.status(409).json({ ok: false, error: 'El correo ya esta en uso' });
       }
-      user.email = email;
+      user.email = nextEmail;
     }
-    if (name) user.name = name;
-    if (role) user.role = role;
+    if (name) user.name = String(name).trim();
+    if (role) {
+      if (!isValidRole(role)) {
+        return res.status(400).json({ ok: false, error: 'Rol invalido' });
+      }
+      user.role = role;
+    }
     if (password) {
       if (password.length < 6) {
         return res.status(400).json({ ok: false, error: 'La contrasena debe tener al menos 6 caracteres' });
@@ -123,7 +156,7 @@ router.put('/admin/users/:id', auth(), requireAdmin, async (req, res) => {
       await user.setPassword(password);
     }
     await user.save();
-    res.json({ ok: true, user: { id: user._id, name: user.name, email: user.email, role: user.role } });
+    res.json({ ok: true, user: publicUser(user) });
   } catch (err) {
     console.error(err);
     res.status(400).json({ ok: false, error: 'No se pudo actualizar usuario' });

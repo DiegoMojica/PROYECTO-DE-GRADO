@@ -15,6 +15,13 @@ const PRIORITY_COLORS = {
   critical: 'tag tag-critical'
 };
 
+const PRIORITY_LABELS = {
+  low: 'Baja',
+  medium: 'Media',
+  high: 'Alta',
+  critical: 'Alta'
+};
+
 export default function TicketTable({ tickets, onSelect, selectedId }) {
   const [copiedTicketId, setCopiedTicketId] = React.useState('');
 
@@ -97,7 +104,9 @@ export default function TicketTable({ tickets, onSelect, selectedId }) {
                 <td className="ticket-col-company">{ticket.company || 'N/D'}</td>
                 <td className="ticket-col-client">{ticket.createdBy?.name || ticket.createdBy?.email || 'N/D'}</td>
                 <td className="ticket-col-priority">
-                  <span className={PRIORITY_COLORS[ticket.priority] || 'tag'}>{ticket.priority}</span>
+                  <span className={PRIORITY_COLORS[ticket.priority] || 'tag'}>
+                    {PRIORITY_LABELS[ticket.priority] || ticket.priority}
+                  </span>
                 </td>
                 <td className="ticket-col-status">{STATUS_LABELS[ticket.status] || ticket.status}</td>
                 <td className="ticket-col-satisfaction">
